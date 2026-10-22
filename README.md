@@ -20,8 +20,8 @@ Sem variáveis do Supabase, o app funciona no modo local. Na primeira abertura, 
 ## Configurar seu Supabase
 
 1. No projeto Supabase, abra o **SQL Editor** e execute o conteúdo de [`supabase/migrations/202610220001_study_library.sql`](supabase/migrations/202610220001_study_library.sql).
-2. Em **Authentication → Providers**, habilite o acesso por e-mail. O template padrão de Magic Link envia um link de entrada sem senha.
-3. Em **Authentication → URL Configuration**, configure a **Site URL** para a URL do app e adicione `http://localhost:5173` e a URL de produção às **Redirect URLs**. Se usar o preview de produção, inclua também `http://localhost:4173`.
+2. Em **Authentication → Sign In / Providers → Email** (ou **Authentication → Providers → Email**, conforme a interface), habilite **Email** e desative **Confirm email**. Salve a alteração. Essa configuração do servidor permite criar a conta e entrar imediatamente com e-mail e senha, sem confirmação. Ela não é alterada pelo script SQL nem pelo código do navegador.
+3. Em **Authentication → URL Configuration**, configure a **Site URL** para `https://studard.vercel.app`. As **Redirect URLs** podem incluir essa URL, `http://localhost:5173` e `http://localhost:4173`. O login com senha acontece diretamente no app e não depende de um link por e-mail.
 4. Copie `.env.example` para `.env.local` e preencha:
 
 ```dotenv
@@ -31,9 +31,21 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sua-chave-publica
 
 A chave pública atual, que começa com `sb_publishable_`, e a chave `anon` legada são compatíveis. `VITE_SUPABASE_ANON_KEY` também é aceito como alternativa. Nunca coloque uma chave `service_role` ou secreta em variáveis `VITE_*`: elas são incorporadas ao navegador.
 
-5. Reinicie o servidor Vite após alterar as variáveis. Abra **Minha conta**, informe o e-mail e use o link recebido.
+5. Reinicie o servidor Vite após alterar as variáveis. Abra **Minha conta → Criar conta**, informe seu e-mail e uma senha de pelo menos 8 caracteres e repita a senha. A entrada é imediata quando **Confirm email** está desativado. Para uma conta existente, use **Entrar** com e-mail e senha.
 
-A configuração remota e a entrega dos e-mails dependem do seu projeto Supabase. Para uso contínuo, configure seu próprio SMTP no Supabase conforme os limites do serviço de e-mail do projeto.
+A confirmação de e-mail é uma configuração administrativa do Supabase: a chave pública usada no app não tem permissão para mudá-la. Se o cadastro retornar sem sessão porque a confirmação continua ativa, o app informa a pendência e não trata o usuário como autenticado. Senhas são enviadas somente ao Supabase Auth e não são salvas nos backups ou na biblioteca local.
+
+## Publicar na Vercel
+
+1. No projeto Vercel, abra **Settings → Environment Variables**.
+2. Adicione `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` com os mesmos valores do seu `.env.local`. Selecione o ambiente **Production** e, se necessário, **Preview**.
+3. Use o preset **Vite**, comando de build `npm run build` e diretório de saída `dist`.
+4. Publique as alterações de código e faça um novo deploy. Alterar variáveis não atualiza uma build já publicada: use **Deployments → Redeploy** depois de salvar as variáveis.
+5. Se o PWA estiver aberto com uma versão antiga, use o aviso **Atualizar app** ou recarregue a página após o deploy.
+
+O arquivo `.env.local` é ignorado pelo Git. Ele configura apenas sua máquina; a Vercel precisa receber as variáveis no painel. O modal “A sincronização ainda não foi configurada” indica que a build em uso não recebeu uma das variáveis do Supabase.
+
+Não é necessário rodar novamente a migração para trocar o tipo de login. Não inclua a chave `service_role` no app ou nas variáveis `VITE_*`.
 
 ## Dados e sincronização
 
@@ -83,6 +95,8 @@ Os testes de navegador usam a build de produção nas versões desktop e mobile,
 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npm run test:e2e
 ```
 
-A URL/chave do Supabase e a migração aplicada são necessárias para testar a autenticação real por e-mail e a sincronização contra seu projeto.
+Os testes de autenticação interceptam as requisições HTTP do Supabase para verificar login com senha, cadastro com sessão imediata, erros de credenciais, validação de senhas e persistência da sessão. Eles não criam contas nem enviam e-mails reais.
 
-Referências de implementação: [React](https://react.dev/learn/creating-a-react-app), [Supabase Auth](https://supabase.com/docs/reference/javascript/auth-signinwithotp), [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security) e [Vite PWA](https://vite-pwa-org.netlify.app/guide/).
+A URL/chave do Supabase, a migração aplicada e **Confirm email** desativado são necessários para testar o cadastro real e a sincronização contra seu projeto.
+
+Referências de implementação: [React](https://react.dev/learn/creating-a-react-app), [Supabase Auth](https://supabase.com/docs/guides/auth/passwords), [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security) e [Vite PWA](https://vite-pwa-org.netlify.app/guide/).

@@ -3898,3 +3898,44 @@ select {
     opacity: 0.6;
   }
 }
+.auth-mode {
+  display: flex;
+  gap: 4px;
+  border: 1px solid #e0e7d7;
+  border-radius: 10px;
+  background: #f0f4e9;
+  padding: 4px;
+  margin-bottom: 7px;
+}
+.auth-mode > button {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 7px;
+  color: #7d8e6d;
+  font-size: 12px;
+  font-weight: 500;
+  transition:
+    background 0.2s,
+    box-shadow 0.2s;
+}
+.auth-mode > button[aria-pressed='true'] {
+  color: #365e50;
+  background: #fffef9;
+  box-shadow: 0 1px 5px #365e5010;
+}
+.password-field {
+  position: relative;
+  display: block;
+}
+.editor-form .password-field input {
+  padding-right: 45px;
+}
+.password-field .icon-btn {
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.account-content .form-error {
+  margin-top: 0;
+}

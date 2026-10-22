@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ChangeEvent, FormEvent } from 'react'
+import type { ChangeEvent } from 'react'
 import type { User } from '@supabase/supabase-js'
 import {
   ArrowDownToLine,
@@ -21,7 +21,6 @@ import {
   Leaf,
   LoaderCircle,
   LogIn,
-  LogOut,
   Menu,
   MoreHorizontal,
   Pencil,
@@ -43,12 +42,12 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useAuth } from './lib/useAuth'
 import { useLibrary } from './lib/useLibrary'
 import { useInstall } from './lib/useInstall'
-import { supabase } from './lib/supabase'
 import { deleteSubject, deleteTopic, isDue, localDay, reviewCard, streak } from './lib/study'
 import { isLibrary } from './lib/validation'
 import type { Card, Library, Subject, Topic } from './lib/types'
 import { SubjectIcon } from './components/SubjectIcon'
 import { Modal } from './components/Modal'
+import { AccountModal } from './components/AccountModal'
 import { CardEditor, SubjectEditor, TopicEditor } from './components/Editors'
 import { StudySession } from './components/StudySession'
 
@@ -1469,154 +1468,5 @@ function ProgressPage({ data }: { data: Library }) {
         <Sparkles size={24} />
       </div>
     </>
-  )
-}
-function AccountModal({
-  user,
-  onClose,
-  notify,
-}: {
-  user: User | null
-  onClose: () => void
-  notify: (message: string) => void
-}) {
-  const [email, setEmail] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [sent, setSent] = useState(false)
-  const [error, setError] = useState('')
-  async function signIn(e: FormEvent) {
-    e.preventDefault()
-    if (!supabase) return
-    setBusy(true)
-    setError('')
-    try {
-      const { error } = await supabase.auth.signInWithOtp({
-        email: email.trim(),
-        options: { emailRedirectTo: window.location.origin },
-      })
-      if (error)
-        setError(
-          'Não foi possível enviar o link. Confira seu e-mail e tente novamente em alguns instantes.',
-        )
-      else setSent(true)
-    } catch {
-      setError('Confira sua conexão e tente novamente.')
-    } finally {
-      setBusy(false)
-    }
-  }
-  return (
-    <Modal
-      title={
-        user
-          ? 'Seu aprendizado, em todo lugar'
-          : sent
-            ? 'Uma carta na sua caixa de entrada'
-            : 'Entre no seu espaço'
-      }
-      description={user ? 'Sua biblioteca acompanha você.' : 'Seu conhecimento merece ir com você.'}
-      onClose={onClose}
-    >
-      <div className="account-content">
-        {user ? (
-          <>
-            <div className="account-identity">
-              <span className="account-big-icon">
-                <Sprout size={33} />
-              </span>
-              <strong>{user.email}</strong>
-              <span>Conta conectada</span>
-            </div>
-            <p className="account-note">
-              Sua biblioteca na nuvem é separada dos cards do modo local. Para trazer cards de lá,
-              exporte um backup no modo local e restaure-o nesta conta.
-            </p>
-            <button
-              className="btn btn-secondary full-width"
-              disabled={busy}
-              onClick={async () => {
-                if (!supabase) return
-                setBusy(true)
-                const { error } = await supabase.auth.signOut({ scope: 'local' })
-                if (error) {
-                  setError('Não foi possível sair. Tente novamente.')
-                  setBusy(false)
-                } else {
-                  notify('Você saiu da conta. Seus cards na nuvem estão guardados.')
-                  onClose()
-                }
-              }}
-            >
-              <LogOut size={16} />
-              Sair desta conta
-            </button>
-          </>
-        ) : !supabase ? (
-          <>
-            <div className="account-big-icon">
-              <Cloud size={34} />
-            </div>
-            <h3>Por enquanto, um espaço só seu.</h3>
-            <p>
-              A sincronização ainda não foi configurada. Seus cards já podem ser criados e estudados
-              neste dispositivo.
-            </p>
-            <p className="form-notice">
-              Exporte sua biblioteca nas preferências para guardar uma cópia. O acesso por e-mail
-              ficará disponível assim que a conexão for configurada.
-            </p>
-            <button className="btn btn-primary full-width" onClick={onClose}>
-              Continuar estudando
-              <ArrowRight size={17} />
-            </button>
-          </>
-        ) : sent ? (
-          <>
-            <div className="account-big-icon">
-              <Check size={34} />
-            </div>
-            <p>
-              Enviamos um link de acesso para <strong>{email}</strong>. Abra o e-mail neste
-              dispositivo para entrar, sem precisar de senha.
-            </p>
-            <p className="account-note">
-              Se não aparecer, dê uma olhada na pasta de spam. A biblioteca da sua conta é separada
-              do modo local.
-            </p>
-            <button className="btn btn-ghost full-width" onClick={() => setSent(false)}>
-              Usar outro e-mail
-            </button>
-          </>
-        ) : (
-          <form className="editor-form" onSubmit={(e) => void signIn(e)}>
-            <label>
-              Seu e-mail
-              <input
-                type="email"
-                autoComplete="email"
-                autoFocus
-                required
-                maxLength={254}
-                placeholder="voce@exemplo.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </label>
-            <button className="btn btn-primary full-width" disabled={busy} type="submit">
-              {busy ? <LoaderCircle className="spin" size={17} /> : <LogIn size={17} />}Enviar link
-              de acesso
-            </button>
-            <p className="account-note">
-              Sem senhas para decorar. Você recebe um link seguro para entrar na sua conta.
-            </p>
-          </form>
-        )}
-        {error && (
-          <p className="form-error" role="alert">
-            {error}
-          </p>
-        )}
-      </div>
-    </Modal>
   )
 }
