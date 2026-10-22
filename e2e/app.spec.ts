@@ -154,3 +154,37 @@ test('preserves both tabs when another tab changes the local library', async ({
   await expect(page.getByRole('button', { name: 'Adicionar aos favoritos' })).toBeVisible()
   await second.close()
 })
+
+test('shuffles a theme automatically, reviews each card once, and reshuffles on restart', async ({
+  page,
+}) => {
+  // Deterministic randomness makes the regression reproducible without relying on chance.
+  await page.addInitScript(() => {
+    Math.random = () => 0
+  })
+  await page.reload()
+  await page.getByRole('button', { name: /Português.*3 temas/ }).click()
+  await page.getByRole('button', { name: 'Crase 3', exact: true }).click()
+  await expect(page.locator('.card-question h3')).toHaveCount(3)
+  const original = await page.locator('.card-question h3').allTextContents()
+  await page.getByRole('button', { name: 'Estudar 3', exact: true }).click()
+  await expect(page.locator('#study-question')).not.toHaveText(original[0])
+
+  const visited: string[] = []
+  for (let index = 0; index < original.length; index++) {
+    await expect(page.locator('.study-progress-head strong')).toHaveText(
+      new RegExp(`^${index + 1}\\s+de\\s*3$`),
+    )
+    const question = await page.locator('#study-question').innerText()
+    visited.push(question)
+    await page.locator('.reveal-btn').click()
+    await expect(page.locator('#study-question')).toHaveText(question)
+    await page.getByRole('button', { name: /Lembrei/ }).click()
+  }
+  await expect(page.getByRole('heading', { name: 'Olha o quanto você aprendeu.' })).toBeVisible()
+  expect(visited.toSorted()).toEqual(original.toSorted())
+  await page.getByRole('button', { name: 'Estudar novamente' }).click()
+  await expect(page.locator('#study-question')).not.toHaveText(visited[0])
+  await page.getByRole('button', { name: 'Encerrar sessão' }).click()
+  await expect(page.locator('.card-question h3')).toHaveText(original)
+})

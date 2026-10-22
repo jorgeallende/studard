@@ -1,15 +1,38 @@
 import type { Card, Library, Rating } from './types'
 
+export const REVIEW_INTERVALS = {
+  again: { days: 1, label: 'Amanhã' },
+  good: { days: 4, label: 'Em 4 dias' },
+  easy: { days: 7, label: 'Em 1 semana' },
+} as const
+
+export function shuffleCards(cards: readonly Card[]): Card[] {
+  const shuffled = [...cards]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+  }
+  return shuffled
+}
+
+export function isStudyActive(card: Card) {
+  return card.suspended !== true
+}
 export function isDue(card: Card, now = new Date()) {
-  return new Date(card.dueAt).getTime() <= now.getTime()
+  return isStudyActive(card) && new Date(card.dueAt).getTime() <= now.getTime()
+}
+export function setCardSuspended(library: Library, id: string, suspended: boolean): Library {
+  return {
+    ...library,
+    cards: library.cards.map((card) => (card.id === id ? { ...card, suspended } : card)),
+  }
 }
 export function localDay(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
 }
 export function scheduleCard(card: Card, rating: Rating, now = new Date()): Card {
   const due = new Date(now)
-  if (rating === 'again') due.setMinutes(due.getMinutes() + 10)
-  else due.setDate(due.getDate() + (rating === 'good' ? 1 : 4))
+  due.setDate(due.getDate() + REVIEW_INTERVALS[rating].days)
   return { ...card, dueAt: due.toISOString(), reviews: card.reviews + 1, lastRating: rating }
 }
 export function reviewCard(

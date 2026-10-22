@@ -16,6 +16,7 @@ export interface Card {
   question: string
   answer: string
   favorite: boolean
+  suspended?: boolean
   createdAt: string
   dueAt: string
   reviews: number

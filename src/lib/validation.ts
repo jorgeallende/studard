@@ -39,6 +39,7 @@ export function isLibrary(input: unknown): input is Library {
         text(c.question, 2000) &&
         text(c.answer) &&
         typeof c.favorite === 'boolean' &&
+        (c.suspended === undefined || typeof c.suspended === 'boolean') &&
         date(c.createdAt) &&
         date(c.dueAt) &&
         Number.isInteger(c.reviews) &&

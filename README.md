@@ -59,7 +59,18 @@ Não é necessário rodar novamente a migração para trocar o tipo de login. N�
 
 ## Revisões
 
-Os intervalos são simples e fixos: **Preciso rever** agenda para 10 minutos; **Lembrei**, para o dia seguinte; **Foi fácil**, para 4 dias depois. Cada card recebe uma avaliação por passagem na sessão. Ao concluir, é possível estudar novamente. Esta versão não implementa algoritmos adaptativos como FSRS ou SM-2.
+Os cards são embaralhados automaticamente no início de cada sessão e ao escolher **Estudar novamente**. A ordem permanece estável durante a sessão, sem alterar a organização da biblioteca. O botão **Embaralhar** continua disponível antes de avaliar o primeiro card.
+
+Os intervalos são simples e fixos: **Preciso rever** agenda para amanhã; **Lembrei**, para 4 dias depois; **Foi fácil**, para 1 semana depois. Os prazos usam dias de calendário no mesmo horário da avaliação. Cada card recebe uma avaliação por passagem na sessão. Ao concluir, é possível estudar novamente. Esta versão não implementa algoritmos adaptativos como FSRS ou SM-2. Os novos intervalos valem para as próximas avaliações; datas já salvas são preservadas.
+
+- Na **visão geral**, **Vamos estudar** usa todos os cards de todas as matérias e temas, mesmo que a próxima revisão ainda esteja no futuro. **Revisar** usa apenas os cards cuja data de revisão já chegou.
+- Dentro de uma **matéria**, **Estudar** e **Revisar** usam o tema selecionado. Em **Todos os temas**, usam todos os temas daquela matéria. O primeiro inclui todos os cards do contexto e o segundo inclui apenas os disponíveis para revisão.
+- **Só para revisar** filtra a lista exibida. O botão **Estudar** continua sendo prática livre de todo o contexto, mesmo com esse filtro marcado.
+- **Revisar** mostra a quantidade disponível e fica desabilitado quando não há pendências, sem iniciar uma sessão de prática livre. Cards novos ficam disponíveis imediatamente. As quantidades e o filtro são atualizados automaticamente quando um prazo vence, inclusive ao voltar para o app.
+
+Depois de revelar a resposta, a opção discreta **Não mostrar mais nas sessões**, abaixo das três avaliações, retira o card de todos os modos de estudo e revisão, incluindo favoritos e **Estudar novamente**. Ela avança para o próximo card sem registrar uma avaliação ou alterar seu prazo. O card continua aparecendo na listagem e na busca como **Fora das sessões**, onde é possível consultar a pergunta e a resposta ou escolher **Voltar às sessões**. A reativação preserva o prazo anterior; se ele já venceu, o card fica disponível para revisão imediatamente.
+
+Essa preferência fica salva com a biblioteca, sincroniza entre dispositivos e acompanha os backups. Cards antigos continuam ativos por padrão. Não é necessário executar uma nova migração SQL.
 
 O objetivo visual é de 20 revisões por dia. Os números de constância, atividade e lembrança são calculados com base nas suas avaliações reais, usando o calendário local do dispositivo.
 

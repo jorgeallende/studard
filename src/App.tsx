@@ -13,6 +13,7 @@ import {
   CloudOff,
   Coffee,
   Download,
+  EyeOff,
   Flame,
   FolderOpen,
   GraduationCap,
@@ -42,7 +43,17 @@ import { useRegisterSW } from 'virtual:pwa-register/react'
 import { useAuth } from './lib/useAuth'
 import { useLibrary } from './lib/useLibrary'
 import { useInstall } from './lib/useInstall'
-import { deleteSubject, deleteTopic, isDue, localDay, reviewCard, streak } from './lib/study'
+import { useReviewClock } from './lib/useReviewClock'
+import {
+  deleteSubject,
+  deleteTopic,
+  isDue,
+  isStudyActive,
+  localDay,
+  reviewCard,
+  setCardSuspended,
+  streak,
+} from './lib/study'
 import { isLibrary } from './lib/validation'
 import type { Card, Library, Subject, Topic } from './lib/types'
 import { SubjectIcon } from './components/SubjectIcon'
@@ -56,6 +67,7 @@ type Dialog =
   | { kind: 'subject'; subject?: Subject }
   | { kind: 'topic'; subject: Subject; topic?: Topic }
   | { kind: 'card'; card?: Card }
+  | { kind: 'preview'; card: Card }
   | { kind: 'account' }
   | { kind: 'settings' }
   | { kind: 'install' }
@@ -101,7 +113,9 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
   } = useRegisterSW()
   const subject = data.subjects.find((s) => s.id === selectedSubject)
   const topics = data.topics.filter((t) => t.subjectId === selectedSubject)
-  const due = data.cards.filter((c) => isDue(c))
+  const now = useReviewClock(data.cards)
+  const activeCards = data.cards.filter(isStudyActive)
+  const due = data.cards.filter((c) => isDue(c, now))
   const todayReviews = data.history.filter((r) => localDay(new Date(r.at)) === localDay(new Date()))
   const currentStreak = streak(data)
   const todayCount = todayReviews.length
@@ -146,11 +160,31 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
     window.scrollTo({ top: 0, behavior: 'instant' })
   }
   function startStudy(cards: Card[], title: string) {
-    if (!cards.length) {
-      setToast('Ainda não há cards para estudar. Que tal criar o primeiro?')
+    const available = cards.filter(isStudyActive)
+    if (!available.length) {
+      setToast(
+        'Nenhum card ativo para estudar neste contexto. Você pode criar ou reativar um card.',
+      )
       return
     }
-    setSession({ cards, title })
+    setSession({ cards: available, title })
+  }
+  function openCard(card: Card) {
+    if (!isStudyActive(card)) setDialog({ kind: 'preview', card })
+    else startStudy([card], 'Uma descoberta rápida')
+  }
+  function restoreCard(card: Card) {
+    update((library) => setCardSuspended(library, card.id, false))
+    setDialog(null)
+    setToast('O card voltou às sessões de estudo e revisão.')
+  }
+  function startReview(cards: Card[], title: string) {
+    const available = cards.filter((card) => isDue(card))
+    if (!available.length) {
+      setToast('Tudo em dia! Nenhum card precisa de revisão neste contexto.')
+      return
+    }
+    setSession({ cards: available, title })
   }
   function newCard() {
     if (!data.subjects.length) {
@@ -275,14 +309,21 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
       cards: d.cards.map((c) => (c.id === id ? { ...c, favorite: !c.favorite } : c)),
     }))
 
-  const matchingCards = data.cards.filter((c) => {
+  const scopedCards = data.cards.filter((c) => {
     const topic = data.topics.find((t) => t.id === c.topicId)
-    const cardSubject = data.subjects.find((s) => s.id === topic?.subjectId)
     return (
       (!selectedSubject || topic?.subjectId === selectedSubject) &&
       (!selectedTopic || c.topicId === selectedTopic) &&
-      (page !== 'favorites' || c.favorite) &&
-      (!onlyDue || isDue(c)) &&
+      (page !== 'favorites' || c.favorite)
+    )
+  })
+  const scopedDue = scopedCards.filter((card) => isDue(card, now))
+  const scopedStudyCards = scopedCards.filter(isStudyActive)
+  const matchingCards = scopedCards.filter((c) => {
+    const topic = data.topics.find((t) => t.id === c.topicId)
+    const cardSubject = data.subjects.find((s) => s.id === topic?.subjectId)
+    return (
+      (!onlyDue || isDue(c, now)) &&
       (!q ||
         `${c.question} ${c.answer} ${topic?.name} ${cardSubject?.name}`
           .toLocaleLowerCase('pt-BR')
@@ -544,7 +585,8 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
                     onFavorite={toggleFavorite}
                     onEdit={(card) => setDialog({ kind: 'card', card })}
                     onDelete={removeCard}
-                    onStudy={(card) => startStudy([card], 'Uma descoberta rápida')}
+                    onRestore={restoreCard}
+                    onStudy={openCard}
                     emptyAction={newCard}
                   />
                 </>
@@ -586,26 +628,44 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
                         <br />
                         Que tal alguns minutos de estudo hoje?
                       </p>
-                      <button
-                        className="btn btn-primary"
-                        onClick={() =>
-                          due.length
-                            ? startStudy(due, 'Sua revisão de hoje')
-                            : data.cards.length
-                              ? startStudy(data.cards, 'Um pouco mais de prática')
+                      <div className="session-actions hero-actions">
+                        <button
+                          className="btn btn-primary"
+                          disabled={data.cards.length > 0 && !activeCards.length}
+                          title={
+                            activeCards.length
+                              ? 'Praticar todos os cards ativos, de todas as matérias e temas'
+                              : data.cards.length
+                                ? 'Reative um card na listagem para voltar a estudar'
+                                : 'Criar meu primeiro card'
+                          }
+                          onClick={() =>
+                            data.cards.length
+                              ? startStudy(data.cards, 'Estudo livre · todas as matérias')
                               : newCard()
-                        }
-                      >
-                        <Play size={16} fill="currentColor" />
-                        {data.cards.length ? 'Vamos estudar' : 'Criar meu primeiro card'}
-                        <ArrowRight size={17} />
-                      </button>
+                          }
+                        >
+                          <Play size={16} fill="currentColor" />
+                          {data.cards.length ? 'Vamos estudar' : 'Criar meu primeiro card'}
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          disabled={!due.length}
+                          title={
+                            due.length
+                              ? 'Revisar apenas os cards disponíveis, de todas as matérias e temas'
+                              : 'Tudo em dia. Nenhum card precisa de revisão agora.'
+                          }
+                          onClick={() => startReview(data.cards, 'Revisão · todas as matérias')}
+                        >
+                          <RotateCcw size={16} />
+                          Revisar {due.length}
+                        </button>
+                      </div>
                       <span className="hero-footnote">
-                        {due.length
-                          ? `${due.length} cards esperando por você`
-                          : data.cards.length
-                            ? 'Tudo em dia. Sempre cabe mais uma descoberta.'
-                            : 'O primeiro passo é uma boa pergunta.'}
+                        {data.cards.length
+                          ? `Estudo livre: ${activeCards.length} cards ativos. Revisão: só os disponíveis.`
+                          : 'O primeiro passo é uma boa pergunta.'}
                       </span>
                     </div>
                     <div className="hero-art" aria-hidden="true">
@@ -910,19 +970,40 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
                         />
                         Só para revisar
                       </label>
-                      <button
-                        className="btn btn-secondary"
-                        disabled={!matchingCards.length}
-                        onClick={() =>
-                          startStudy(
-                            matchingCards,
-                            data.topics.find((t) => t.id === selectedTopic)?.name || subject.name,
-                          )
-                        }
-                      >
-                        <Play size={15} />
-                        Estudar{matchingCards.length ? ` ${matchingCards.length}` : ''}
-                      </button>
+                      <div className="session-actions">
+                        <button
+                          className="btn btn-primary"
+                          disabled={!scopedStudyCards.length}
+                          title="Praticar todos os cards do tema selecionado, ou da matéria em Todos os temas"
+                          onClick={() =>
+                            startStudy(
+                              scopedCards,
+                              `Estudo livre · ${data.topics.find((t) => t.id === selectedTopic)?.name || subject.name}`,
+                            )
+                          }
+                        >
+                          <Play size={15} />
+                          Estudar {scopedStudyCards.length}
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          disabled={!scopedDue.length}
+                          title={
+                            scopedDue.length
+                              ? 'Revisar apenas os cards disponíveis neste tema ou matéria'
+                              : 'Tudo em dia. Nenhum card precisa de revisão neste contexto.'
+                          }
+                          onClick={() =>
+                            startReview(
+                              scopedCards,
+                              `Revisão · ${data.topics.find((t) => t.id === selectedTopic)?.name || subject.name}`,
+                            )
+                          }
+                        >
+                          <RotateCcw size={15} />
+                          Revisar {scopedDue.length}
+                        </button>
+                      </div>
                     </div>
                   </div>
                   <CardGrid
@@ -931,9 +1012,24 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
                     onFavorite={toggleFavorite}
                     onEdit={(card) => setDialog({ kind: 'card', card })}
                     onDelete={removeCard}
-                    onStudy={(card) => startStudy([card], 'Uma descoberta rápida')}
+                    onRestore={restoreCard}
+                    onStudy={openCard}
                     emptyAction={
-                      topics.length ? newCard : () => setDialog({ kind: 'topic', subject })
+                      onlyDue && scopedCards.length
+                        ? undefined
+                        : topics.length
+                          ? newCard
+                          : () => setDialog({ kind: 'topic', subject })
+                    }
+                    emptyText={
+                      onlyDue && scopedCards.length ? 'Revisões em dia por aqui' : undefined
+                    }
+                    emptyDescription={
+                      onlyDue && scopedCards.length
+                        ? scopedStudyCards.length
+                          ? 'Nenhum card deste contexto precisa de revisão agora. Você pode continuar praticando com o botão Estudar.'
+                          : 'Desmarque Só para revisar para consultar seus cards ou reativar os que estão fora das sessões.'
+                        : undefined
                     }
                   />
                 </>
@@ -946,7 +1042,7 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
                     action={
                       <button
                         className="btn btn-primary"
-                        disabled={!matchingCards.length}
+                        disabled={!matchingCards.some(isStudyActive)}
                         onClick={() => startStudy(matchingCards, 'Seus favoritos')}
                       >
                         <Play size={16} />
@@ -960,7 +1056,8 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
                     onFavorite={toggleFavorite}
                     onEdit={(card) => setDialog({ kind: 'card', card })}
                     onDelete={removeCard}
-                    onStudy={(card) => startStudy([card], 'Uma descoberta rápida')}
+                    onRestore={restoreCard}
+                    onStudy={openCard}
                     emptyText="Seus favoritos moram aqui"
                     emptyDescription="Toque no coração de um card para guardar as ideias que você quer ter sempre por perto."
                   />
@@ -1173,12 +1270,31 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
           </div>
         </Modal>
       )}
+      {dialog?.kind === 'preview' && (
+        <Modal
+          title="Consultar flashcard"
+          description="Este card está fora das sessões, mas continua guardado na sua biblioteca."
+          onClose={() => setDialog(null)}
+        >
+          <div className="card-preview-content">
+            <span className="eyebrow">PERGUNTA</span>
+            <h3>{dialog.card.question}</h3>
+            <span className="eyebrow">RESPOSTA</span>
+            <p>{dialog.card.answer}</p>
+            <button className="btn btn-secondary" onClick={() => restoreCard(dialog.card)}>
+              <RotateCcw size={16} />
+              Voltar às sessões
+            </button>
+          </div>
+        </Modal>
+      )}
       {session && (
         <StudySession
           cards={session.cards}
           library={data}
           title={session.title}
           onReview={(id, rating) => update((d) => reviewCard(d, id, rating))}
+          onSuspend={(id) => update((d) => setCardSuspended(d, id, true))}
           onClose={() => {
             setSession(null)
             setToast('Seu progresso foi salvo. Cada passo conta.')
@@ -1300,6 +1416,7 @@ function CardGrid({
   onFavorite,
   onEdit,
   onDelete,
+  onRestore,
   onStudy,
   emptyAction,
   emptyText = 'Uma boa pergunta é só o começo',
@@ -1310,6 +1427,7 @@ function CardGrid({
   onFavorite: (id: string) => void
   onEdit: (card: Card) => void
   onDelete: (card: Card) => void
+  onRestore: (card: Card) => void
   onStudy: (card: Card) => void
   emptyAction?: () => void
   emptyText?: string
@@ -1355,16 +1473,30 @@ function CardGrid({
               <small>PERGUNTA</small>
               <h3>{card.question}</h3>
               <span>
-                <RotateCcw size={14} />
-                Vire para descobrir
+                {card.suspended ? <EyeOff size={14} /> : <RotateCcw size={14} />}
+                {card.suspended ? 'Consultar pergunta e resposta' : 'Vire para descobrir'}
               </span>
             </button>
             <div className="flashcard-tile-bottom">
-              <span className={isDue(card) ? 'card-due' : 'card-reviewed'}>
+              <span
+                className={
+                  card.suspended ? 'card-suspended' : isDue(card) ? 'card-due' : 'card-reviewed'
+                }
+              >
                 <span />
-                {isDue(card) ? 'Para revisar' : 'Em dia'}
+                {card.suspended ? 'Fora das sessões' : isDue(card) ? 'Para revisar' : 'Em dia'}
               </span>
               <span className="card-tile-actions">
+                {card.suspended && (
+                  <button
+                    className="icon-btn"
+                    aria-label="Voltar às sessões"
+                    title="Voltar às sessões de estudo e revisão"
+                    onClick={() => onRestore(card)}
+                  >
+                    <RotateCcw size={15} />
+                  </button>
+                )}
                 <button
                   className="icon-btn"
                   aria-label="Editar flashcard"

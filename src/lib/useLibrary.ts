@@ -121,15 +121,31 @@ export function useLibrary(userId?: string) {
         setReady(true)
         return
       }
-      setReady(false)
+      // Refresh in the background after the first load. Removing the page here can
+      // swallow the click that brought focus back to the browser window.
       readFailed.current = false
       setStatus('loading')
+      const generationAtRead = generation.current
+      const revisionAtRead = revision.current
+      const savingAtRead = saving.current
       const { data: remote, error } = await supabase!
         .from('study_libraries')
         .select('content, revision')
         .eq('user_id', userId)
         .maybeSingle()
       if (cancelled) return
+      // An edit or save made while this request was in flight is newer than
+      // its response. Preserve it and let the pending save finish normally.
+      if (
+        conflict.current ||
+        savingAtRead ||
+        saving.current ||
+        generation.current !== generationAtRead ||
+        revision.current !== revisionAtRead
+      ) {
+        setReady(true)
+        return
+      }
       if (error) {
         readFailed.current = true
         setStatus('error')

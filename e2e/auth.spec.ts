@@ -1,10 +1,12 @@
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
+import type { Library } from '../src/lib/types'
+import { createSeed } from '../src/lib/seed'
 
 // Intercept every Auth request: these tests never create accounts or send real e-mails.
 async function mockAuth(
   page: Page,
-  options: { invalidPassword?: boolean; confirmationRequired?: boolean } = {},
+  options: { invalidPassword?: boolean; confirmationRequired?: boolean; library?: Library } = {},
 ) {
   const calls: { path: string; method: string; body: Record<string, unknown> | null }[] = []
   const user = {
@@ -76,7 +78,12 @@ async function mockAuth(
       await route.abort()
     }
   })
-  await page.route('**/rest/v1/**', (route) => route.fulfill({ headers, json: [] }))
+  await page.route('**/rest/v1/**', (route) =>
+    route.fulfill({
+      headers,
+      json: options.library ? [{ content: options.library, revision: 1 }] : [],
+    }),
+  )
   return calls
 }
 
@@ -109,6 +116,44 @@ test('signs in with a password, preserves the session across reload, and signs o
   await expect(page.getByText('Conta conectada', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Sair desta conta' }).click()
   await expect(page.getByRole('button', { name: 'Salvo neste dispositivo' })).toBeVisible()
+})
+
+test('opens study with the first click during a background library refresh', async ({ page }) => {
+  const library = createSeed()
+  await mockAuth(page, { library })
+  await openAccount(page)
+  await page.getByLabel('Seu e-mail').fill('estudante@example.com')
+  await page.getByLabel('Senha', { exact: true }).fill('senha-de-estudo')
+  await page.getByRole('button', { name: 'Entrar na minha conta', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Tudo sincronizado' })).toBeVisible()
+
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/rest/v1/study_libraries*', async (route) => {
+    await gate
+    await route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: [{ content: library, revision: 1 }],
+    })
+  })
+  try {
+    const refresh = page.waitForRequest((request) =>
+      request.url().includes('/rest/v1/study_libraries'),
+    )
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+    await refresh
+    const start = page.getByRole('button', { name: 'Vamos estudar', exact: true })
+    await expect(start).toBeVisible({ timeout: 1500 })
+    await start.click()
+    await expect(page.getByRole('dialog', { name: 'Sessão de estudo' })).toBeVisible()
+    release()
+    await expect(page.getByRole('button', { name: 'Tudo sincronizado' })).toBeVisible()
+    await expect(page.getByRole('dialog', { name: 'Sessão de estudo' })).toBeVisible()
+  } finally {
+    release()
+  }
 })
 
 test('creates an account and signs in immediately without an e-mail step', async ({ page }) => {
@@ -177,4 +222,92 @@ test('does not report a successful signup when Supabase still requires confirmat
     'Desative a confirmação de e-mail no Supabase',
   )
   await expect(page.getByRole('button', { name: 'Salvo neste dispositivo' })).toBeVisible()
+})
+
+test('keeps edits saved while an older background library response is in flight', async ({
+  page,
+}) => {
+  const library = createSeed()
+  await mockAuth(page, { library })
+  await openAccount(page)
+  await page.getByLabel('Seu e-mail').fill('estudante@example.com')
+  await page.getByLabel('Senha', { exact: true }).fill('senha-de-estudo')
+  await page.getByRole('button', { name: 'Entrar na minha conta', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Tudo sincronizado' })).toBeVisible()
+  let release!: () => void
+  const gate = new Promise<void>((resolve) => {
+    release = resolve
+  })
+  await page.route('**/rest/v1/study_libraries*', async (route) => {
+    await gate
+    await route.fulfill({
+      headers: { 'access-control-allow-origin': '*' },
+      json: [{ content: library, revision: 1 }],
+    })
+  })
+  await page.route('**/rest/v1/rpc/save_study_library', (route) =>
+    route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: 2 }),
+  )
+  try {
+    const refresh = page.waitForRequest((request) =>
+      request.url().includes('/rest/v1/study_libraries'),
+    )
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+    await refresh
+    await page
+      .getByRole('textbox', { name: 'Buscar na biblioteca' })
+      .fill('O que é concordância verbal?')
+    await page.getByRole('button', { name: 'Remover dos favoritos' }).click()
+    await expect(page.getByRole('button', { name: 'Tudo sincronizado' })).toBeVisible()
+    const response = page.waitForResponse((response) =>
+      response.url().includes('/rest/v1/study_libraries'),
+    )
+    release()
+    await response
+    await page.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    )
+    await expect(page.getByRole('button', { name: 'Adicionar aos favoritos' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Tudo sincronizado' })).toBeVisible()
+  } finally {
+    release()
+  }
+})
+
+test('syncs a suspended card and keeps it out of sessions after reloading from the cloud', async ({
+  page,
+}) => {
+  const library = createSeed()
+  await mockAuth(page, { library })
+  await page.route('**/rest/v1/rpc/save_study_library', async (route) => {
+    const payload = route.request().postDataJSON()
+    Object.assign(library, payload.library_content)
+    await route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: 2 })
+  })
+  await openAccount(page)
+  await page.getByLabel('Seu e-mail').fill('estudante@example.com')
+  await page.getByLabel('Senha', { exact: true }).fill('senha-de-estudo')
+  await page.getByRole('button', { name: 'Entrar na minha conta', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Tudo sincronizado' })).toBeVisible()
+  await page.getByRole('button', { name: 'Vamos estudar', exact: true }).click()
+  const question = await page.locator('#study-question').innerText()
+  await page.locator('.reveal-btn').click()
+  const saved = page.waitForResponse((response) =>
+    response.url().includes('/rpc/save_study_library'),
+  )
+  await page.getByRole('button', { name: 'Não mostrar mais nas sessões', exact: true }).click()
+  await saved
+  await expect(page.getByRole('button', { name: 'Tudo sincronizado' })).toBeVisible()
+  expect(library.cards.find((card) => card.question === question)?.suspended).toBe(true)
+  expect(library.history).toHaveLength(0)
+  await page.getByRole('button', { name: 'Encerrar sessão' }).click()
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Revisar 22', exact: true })).toBeEnabled()
+  await page.getByRole('textbox', { name: 'Buscar na biblioteca' }).fill(question)
+  await expect(page.getByText('Fora das sessões', { exact: true })).toBeVisible()
+  await page.locator('.card-question').click()
+  await expect(page.getByRole('dialog', { name: 'Consultar flashcard' })).toBeVisible()
 })

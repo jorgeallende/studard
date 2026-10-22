@@ -4,20 +4,31 @@ import {
   deleteSubject,
   deleteTopic,
   isDue,
+  isStudyActive,
   reviewCard,
   scheduleCard,
+  setCardSuspended,
   streak,
 } from '../src/lib/study'
 import { isLibrary } from '../src/lib/validation'
 
 const now = new Date('2026-10-22T12:00:00.000Z')
 describe('Sessões e calendário de revisão', () => {
-  it('agenda respostas difíceis para dez minutos e as outras para dias futuros', () => {
+  it.each([
+    ['again', '2026-10-23T12:00:00.000Z'],
+    ['good', '2026-10-26T12:00:00.000Z'],
+    ['easy', '2026-10-29T12:00:00.000Z'],
+  ] as const)('agenda %s e só libera o card no prazo exato', (rating, expected) => {
     const card = createSeed().cards[0]
-    expect(scheduleCard(card, 'again', now).dueAt).toBe('2026-10-22T12:10:00.000Z')
-    expect(scheduleCard(card, 'good', now).dueAt).toBe('2026-10-23T12:00:00.000Z')
-    expect(scheduleCard(card, 'easy', now).dueAt).toBe('2026-10-26T12:00:00.000Z')
-    expect(isDue(scheduleCard(card, 'again', now), now)).toBe(false)
+    const scheduled = scheduleCard(card, rating, now)
+    expect(scheduled.dueAt).toBe(expected)
+    expect(isDue(scheduled, new Date(Date.parse(expected) - 1))).toBe(false)
+    expect(isDue(scheduled, new Date(expected))).toBe(true)
+    expect(isDue(scheduled, new Date(Date.parse(expected) + 1))).toBe(true)
+  })
+  it('mantém o horário ao atravessar a virada do ano', () => {
+    const scheduled = scheduleCard(createSeed().cards[0], 'easy', new Date('2026-12-28T12:00:00Z'))
+    expect(scheduled.dueAt).toBe('2027-01-04T12:00:00.000Z')
   })
   it('registra uma revisão sem alterar os outros cards', () => {
     const before = createSeed()
@@ -37,6 +48,40 @@ describe('Sessões e calendário de revisão', () => {
   })
 })
 describe('Integridade da biblioteca', () => {
+  it('retira um card das sessões sem mudar seu conteúdo, prazo ou histórico', () => {
+    const before = createSeed()
+    before.cards[0].dueAt = now.toISOString()
+    const after = setCardSuspended(before, before.cards[0].id, true)
+    expect(after.cards).toHaveLength(before.cards.length)
+    expect(after.cards[0]).toEqual({ ...before.cards[0], suspended: true })
+    expect(after.history).toEqual(before.history)
+    expect(isStudyActive(after.cards[0])).toBe(false)
+    expect(isDue(after.cards[0], new Date('2099-01-01T12:00:00Z'))).toBe(false)
+    expect(before.cards[0].suspended).toBeUndefined()
+  })
+  it('reativa o card com a mesma data de revisão que estava salva', () => {
+    const before = createSeed()
+    before.cards[0].dueAt = now.toISOString()
+    const after = setCardSuspended(
+      setCardSuspended(before, before.cards[0].id, true),
+      before.cards[0].id,
+      false,
+    )
+    expect(isStudyActive(after.cards[0])).toBe(true)
+    expect(isDue(after.cards[0], now)).toBe(true)
+    expect(after.cards[0].dueAt).toBe(before.cards[0].dueAt)
+    expect(after.history).toEqual(before.history)
+    expect(after.cards[1]).toEqual(before.cards[1])
+  })
+  it('aceita bibliotecas antigas e exige booleano para cards fora das sessões', () => {
+    const data = createSeed()
+    expect(isLibrary(data)).toBe(true)
+    expect(isLibrary(setCardSuspended(data, data.cards[0].id, true))).toBe(true)
+    expect(isLibrary(setCardSuspended(data, data.cards[0].id, false))).toBe(true)
+    for (const invalid of [null, 'true', 1]) {
+      expect(isLibrary({ ...data, cards: [{ ...data.cards[0], suspended: invalid }] })).toBe(false)
+    }
+  })
   it('remove os temas e cards descendentes ao excluir uma matéria', () => {
     const before = createSeed()
     const topicIds = before.topics.filter((t) => t.subjectId === 's1').map((t) => t.id)

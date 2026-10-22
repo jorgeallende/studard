@@ -3939,3 +3939,97 @@ select {
 .account-content .form-error {
   margin-top: 0;
 }
+.session-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-shrink: 0;
+}
+.hero-actions {
+  position: relative;
+  z-index: 3;
+  flex-wrap: wrap;
+}
+.hero-actions .btn-secondary {
+  background: #f9fbf4;
+  border-color: #ccd9bd;
+  color: #5c754d;
+}
+.toolbar-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+@media (max-width: 540px) {
+  .hero-footnote {
+    max-width: 100%;
+    line-height: 1.8;
+  }
+  .cards-toolbar .toolbar-actions {
+    gap: 12px;
+  }
+  .cards-toolbar .session-actions {
+    gap: 8px;
+    margin-left: auto;
+  }
+}
+.suspend-card-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 15px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  color: #66745d;
+  font-size: 10px;
+  line-height: 1.6;
+}
+.suspend-card-button:hover:not(:disabled) {
+  color: #66745d;
+  background: #eaf0e2;
+}
+.session-suspended-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  max-width: 440px;
+  font-size: 11px !important;
+}
+.card-suspended {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #929b8b;
+  font-size: 9px;
+}
+.card-suspended > span {
+  width: 4px;
+  height: 4px;
+  background: #adb4a7;
+  border-radius: 50%;
+}
+.card-preview-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+}
+.card-preview-content h3 {
+  color: #506448;
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.7;
+  margin-bottom: 12px;
+  overflow-wrap: anywhere;
+}
+.card-preview-content p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  color: #728566;
+  line-height: 1.9;
+}
+.card-preview-content .btn {
+  margin-top: 10px;
+}

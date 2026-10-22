@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Check,
+  EyeOff,
   PartyPopper,
   RotateCcw,
   Shuffle,
@@ -10,24 +11,28 @@ import {
   X,
 } from 'lucide-react'
 import type { Card, Library, Rating } from '../lib/types'
+import { REVIEW_INTERVALS, isStudyActive, shuffleCards } from '../lib/study'
 
 export function StudySession({
   cards: initialCards,
   library,
   title,
   onReview,
+  onSuspend,
   onClose,
 }: {
   cards: Card[]
   library: Library
   title: string
   onReview: (id: string, rating: Rating) => void
+  onSuspend: (id: string) => void
   onClose: () => void
 }) {
-  const [cards, setCards] = useState(initialCards)
+  const [cards, setCards] = useState(() => shuffleCards(initialCards))
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
   const [again, setAgain] = useState(0)
+  const [suspended, setSuspended] = useState<string[]>([])
   const [finished, setFinished] = useState(false)
   const [locked, setLocked] = useState(false)
   const lock = useRef(false)
@@ -37,12 +42,18 @@ export function StudySession({
   const card = cards[index]
   const topic = library.topics.find((t) => t.id === card?.topicId)
   const subject = library.subjects.find((s) => s.id === topic?.subjectId)
-  const rate = (rating: Rating) => {
-    if (!flipped || lock.current || finished) return
+  const activeIds = new Set(library.cards.filter(isStudyActive).map((card) => card.id))
+  const restartCards = cards.filter(
+    (card) => activeIds.has(card.id) && !suspended.includes(card.id),
+  )
+  const reviewed = cards.length - suspended.length
+  const beginAnswer = () => {
+    if (!flipped || lock.current || finished) return false
     lock.current = true
     setLocked(true)
-    onReview(card.id, rating)
-    if (rating === 'again') setAgain((value) => value + 1)
+    return true
+  }
+  const advance = () => {
     setFlipped(false)
     timer.current = setTimeout(() => {
       if (index + 1 >= cards.length) setFinished(true)
@@ -50,6 +61,18 @@ export function StudySession({
       lock.current = false
       setLocked(false)
     }, 280)
+  }
+  const rate = (rating: Rating) => {
+    if (!beginAnswer()) return
+    onReview(card.id, rating)
+    if (rating === 'again') setAgain((value) => value + 1)
+    advance()
+  }
+  const suspendCurrent = () => {
+    if (!beginAnswer()) return
+    onSuspend(card.id)
+    setSuspended((ids) => [...ids, card.id])
+    advance()
   }
   useEffect(() => {
     dialogRef.current?.showModal()
@@ -108,19 +131,29 @@ export function StudySession({
               <PartyPopper size={46} strokeWidth={1.4} />
             </div>
             <span className="eyebrow">UM PASSO A MAIS</span>
-            <h1>Olha o quanto você aprendeu.</h1>
+            <h1>{reviewed ? 'Olha o quanto você aprendeu.' : 'Sessão concluída.'}</h1>
             <p>
-              Você revisou {cards.length} {cards.length === 1 ? 'card' : 'cards'}.<br />
+              Você revisou {reviewed} {reviewed === 1 ? 'card' : 'cards'}.<br />
               {again
-                ? `${again} ${again === 1 ? 'card volta' : 'cards voltam'} para revisão em 10 minutos.`
+                ? `${again} ${again === 1 ? 'card volta' : 'cards voltam'} para revisão amanhã.`
                 : 'Tudo certo por hoje. Seu eu do futuro agradece.'}
             </p>
+            {suspended.length > 0 && (
+              <p className="session-suspended-note">
+                <EyeOff size={14} />
+                {suspended.length}{' '}
+                {suspended.length === 1
+                  ? 'card ficou fora das sessões e continua'
+                  : 'cards ficaram fora das sessões e continuam'}{' '}
+                na sua listagem.
+              </p>
+            )}
             <div className="finish-stats">
               <span>
-                <strong>{cards.length}</strong>cards revisados
+                <strong>{reviewed}</strong>cards revisados
               </span>
               <span>
-                <strong>{cards.length - again}</strong>lembrados
+                <strong>{reviewed - again}</strong>lembrados
               </span>
             </div>
             <button className="btn btn-primary" onClick={onClose}>
@@ -129,9 +162,12 @@ export function StudySession({
             </button>
             <button
               className="btn btn-ghost"
+              disabled={!restartCards.length}
               onClick={() => {
+                setCards(shuffleCards(restartCards))
                 setIndex(0)
                 setAgain(0)
+                setSuspended([])
                 setFinished(false)
                 setFlipped(false)
               }}
@@ -209,7 +245,7 @@ export function StudySession({
                       <span>
                         Preciso rever <kbd>1</kbd>
                       </span>
-                      <small>Em 10 minutos</small>
+                      <small>{REVIEW_INTERVALS.again.label}</small>
                     </button>
                     <button
                       className="rating rating-good"
@@ -219,7 +255,7 @@ export function StudySession({
                       <span>
                         Lembrei <kbd>2</kbd>
                       </span>
-                      <small>Amanhã</small>
+                      <small>{REVIEW_INTERVALS.good.label}</small>
                     </button>
                     <button
                       className="rating rating-easy"
@@ -229,9 +265,18 @@ export function StudySession({
                       <span>
                         Foi fácil <kbd>3</kbd>
                       </span>
-                      <small>Em 4 dias</small>
+                      <small>{REVIEW_INTERVALS.easy.label}</small>
                     </button>
                   </div>
+                  <button
+                    className="suspend-card-button"
+                    disabled={locked}
+                    title="O card continua na listagem e pode voltar às sessões quando você quiser"
+                    onClick={suspendCurrent}
+                  >
+                    <EyeOff size={14} />
+                    Não mostrar mais nas sessões
+                  </button>
                 </>
               ) : (
                 <>
@@ -257,13 +302,9 @@ export function StudySession({
               {index === 0 && (
                 <button
                   className="btn btn-ghost"
+                  disabled={locked || cards.length < 2}
                   onClick={() => {
-                    const shuffled = [...cards]
-                    for (let i = shuffled.length - 1; i > 0; i--) {
-                      const j = Math.floor(Math.random() * (i + 1))
-                      ;[shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-                    }
-                    setCards(shuffled)
+                    setCards((current) => shuffleCards(current))
                     setFlipped(false)
                   }}
                 >
