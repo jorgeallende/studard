@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createBulkCards, parseBulkCards } from '../src/lib/bulkCards'
-import { createSeed } from '../src/lib/seed'
+import { createSeed } from './fixtures/library'
 import { isLibrary } from '../src/lib/validation'
 
 const valid = [

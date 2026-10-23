@@ -15,7 +15,7 @@ npm run dev
 
 Acesse a URL indicada pelo Vite, normalmente `http://localhost:5173`.
 
-Sem variáveis do Supabase, o app funciona no modo local. Na primeira abertura, cria uma biblioteca de exemplo com 4 matérias, 9 temas e 23 flashcards. Você pode editar ou excluir esses exemplos. Nada é enviado para a nuvem nesse modo.
+O login com e-mail e senha é obrigatório. Configure o Supabase conforme a seção abaixo para entrar ou criar uma conta. Contas novas começam com a biblioteca vazia; o app não cria matérias, temas nem cards de exemplo. Sem as variáveis do Supabase, a tela de acesso informa que a conexão precisa ser configurada e não abre o sistema.
 
 ## Configurar seu Supabase
 
@@ -31,7 +31,7 @@ VITE_SUPABASE_PUBLISHABLE_KEY=sua-chave-publica
 
 A chave pública atual, que começa com `sb_publishable_`, e a chave `anon` legada são compatíveis. `VITE_SUPABASE_ANON_KEY` também é aceito como alternativa. Nunca coloque uma chave `service_role` ou secreta em variáveis `VITE_*`: elas são incorporadas ao navegador.
 
-5. Reinicie o servidor Vite após alterar as variáveis. Abra **Minha conta → Criar conta**, informe seu e-mail e uma senha de pelo menos 8 caracteres e repita a senha. A entrada é imediata quando **Confirm email** está desativado. Para uma conta existente, use **Entrar** com e-mail e senha.
+5. Reinicie o servidor Vite após alterar as variáveis. Na tela inicial, escolha **Criar conta**, informe seu e-mail e uma senha de pelo menos 8 caracteres e repita a senha. A entrada é imediata quando **Confirm email** está desativado. Para uma conta existente, use **Entrar** com e-mail e senha.
 
 A confirmação de e-mail é uma configuração administrativa do Supabase: a chave pública usada no app não tem permissão para mudá-la. Se o cadastro retornar sem sessão porque a confirmação continua ativa, o app informa a pendência e não trata o usuário como autenticado. Senhas são enviadas somente ao Supabase Auth e não são salvas nos backups ou na biblioteca local.
 
@@ -43,7 +43,7 @@ A confirmação de e-mail é uma configuração administrativa do Supabase: a ch
 4. Publique as alterações de código e faça um novo deploy. Alterar variáveis não atualiza uma build já publicada: use **Deployments → Redeploy** depois de salvar as variáveis.
 5. Se o PWA estiver aberto com uma versão antiga, use o aviso **Atualizar app** ou recarregue a página após o deploy.
 
-O arquivo `.env.local` é ignorado pelo Git. Ele configura apenas sua máquina; a Vercel precisa receber as variáveis no painel. O modal “A sincronização ainda não foi configurada” indica que a build em uso não recebeu uma das variáveis do Supabase.
+O arquivo `.env.local` é ignorado pelo Git. Ele configura apenas sua máquina; a Vercel precisa receber as variáveis no painel. A mensagem “O acesso ainda não está disponível” na tela inicial indica que a build em uso não recebeu uma das variáveis do Supabase.
 
 Não é necessário rodar novamente a migração para trocar o tipo de login. Não inclua a chave `service_role` no app ou nas variáveis `VITE_*`.
 
@@ -53,8 +53,9 @@ Não é necessário rodar novamente a migração para trocar o tipo de login. N�
 - RLS permite ler somente a biblioteca do próprio usuário. As gravações usam a função `save_study_library`, que identifica o usuário pela sessão e confere a revisão esperada.
 - O app mantém uma cópia por conta no `localStorage`. Alterações são salvas localmente de imediato e sincronizadas após uma pequena pausa. Ao recuperar a conexão, ele confere a versão remota e envia as alterações pendentes. Ao voltar à aba, busca alterações remotas quando não há edições locais pendentes.
 - Se houver edições simultâneas em dispositivos diferentes, o app informa o conflito. Exporte a cópia local em **Preferências** antes de carregar a versão da nuvem. Não há mesclagem automática.
-- A biblioteca local e as bibliotecas das contas são separadas. Para levar seus cards locais à conta, exporte no modo local, entre na conta e restaure o backup em **Preferências**. Restaurar substitui a biblioteca atual, com confirmação.
+- A biblioteca e o cache pertencem à conta autenticada. O app não carrega dados de visitante. É possível restaurar um backup JSON em **Preferências** depois de entrar; restaurar substitui a biblioteca da conta atual, com confirmação.
 - Sair da conta preserva seu cache offline neste dispositivo. Use dispositivos pessoais para estudar com dados privados.
+- Sem sessão, ao sair ou quando a sessão deixa de ser válida, o app mostra a tela de acesso e desmonta a área de estudo. Uma sessão persistida permite continuar usando sua própria biblioteca offline; entrar ou criar conta exige conexão.
 - Backups são validados antes da importação e aceitam arquivos de até 10 MB. A biblioteca na nuvem também tem limite de 10 MB por documento.
 
 ## Inserir cards em bloco
@@ -128,7 +129,7 @@ Os testes de navegador usam a build de produção nas versões desktop e mobile,
 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome npm run test:e2e
 ```
 
-Os testes de autenticação interceptam as requisições HTTP do Supabase para verificar login com senha, cadastro com sessão imediata, erros de credenciais, validação de senhas e persistência da sessão. Eles não criam contas nem enviam e-mails reais.
+Os testes de autenticação interceptam as requisições HTTP do Supabase para verificar acesso obrigatório, login com senha, cadastro com biblioteca vazia, erros de credenciais, validação de senhas e persistência da sessão. Os cenários de estudo entram com uma conta simulada e usam exemplos definidos exclusivamente em `tests/fixtures`; esses exemplos não fazem parte da aplicação publicada. Os testes não criam contas nem enviam e-mails reais.
 
 A URL/chave do Supabase, a migração aplicada e **Confirm email** desativado são necessários para testar o cadastro real e a sincronização contra seu projeto.
 

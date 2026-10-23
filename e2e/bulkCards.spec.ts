@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from './helpers/fixtures'
 import type { Page } from '@playwright/test'
 
 async function openTheme(page: Page) {

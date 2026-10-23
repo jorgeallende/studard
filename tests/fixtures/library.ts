@@ -1,4 +1,4 @@
-import type { Library } from './types'
+import type { Library } from '../../src/lib/types'
 
 export function createSeed(): Library {
   const topics = [

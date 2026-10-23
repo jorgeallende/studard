@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from './supabase'
-import { createSeed } from './seed'
 import { emptyLibrary, type Library } from './types'
 import { isLibrary } from './validation'
 
@@ -9,9 +8,8 @@ interface Cache {
   revision: number
   dirty: boolean
 }
-export type SyncStatus =
-  'local' | 'loading' | 'synced' | 'saving' | 'offline' | 'error' | 'conflict'
-const keyFor = (id?: string) => `studard:library:${id || 'guest'}:v1`
+export type SyncStatus = 'loading' | 'synced' | 'saving' | 'offline' | 'error' | 'conflict'
+const keyFor = (id: string) => `studard:library:${id}:v1`
 function readCache(key: string): Cache | null {
   try {
     const raw = localStorage.getItem(key)
@@ -29,20 +27,18 @@ function readCache(key: string): Cache | null {
   }
   return null
 }
-export function useLibrary(userId?: string) {
+export function useLibrary(userId: string) {
   const cacheKey = keyFor(userId)
   const [initial] = useState(() => readCache(cacheKey))
-  const [data, setData] = useState<Library>(
-    () => initial?.data || (userId ? emptyLibrary() : createSeed()),
-  )
+  const [data, setData] = useState<Library>(() => initial?.data || emptyLibrary())
   const current = useRef(data)
   const revision = useRef(initial?.revision || 0)
   const dirty = useRef(initial?.dirty || false)
   const generation = useRef(0)
   const saving = useRef(false)
-  const [ready, setReady] = useState(!userId)
+  const [ready, setReady] = useState(false)
   const [online, setOnline] = useState(navigator.onLine)
-  const [status, setStatus] = useState<SyncStatus>(userId ? 'loading' : 'local')
+  const [status, setStatus] = useState<SyncStatus>('loading')
   const [message, setMessage] = useState('')
   const [tick, setTick] = useState(0)
   const [refresh, setRefresh] = useState(0)
@@ -105,10 +101,7 @@ export function useLibrary(userId?: string) {
   }, [cacheKey])
 
   useEffect(() => {
-    if (!userId || !supabase) {
-      persist()
-      return
-    }
+    if (!supabase) return
     let cancelled = false
     const load = async () => {
       if (conflict.current) {
@@ -195,7 +188,7 @@ export function useLibrary(userId?: string) {
   }, [userId, persist, online, refresh])
 
   useEffect(() => {
-    if (!userId || !supabase || !ready || conflict.current || readFailed.current) return
+    if (!supabase || !ready || conflict.current || readFailed.current) return
     if (!online) {
       setStatus('offline')
       return
@@ -240,7 +233,7 @@ export function useLibrary(userId?: string) {
   }, [data, userId, online, ready, tick, persist])
 
   const reloadCloud = async () => {
-    if (!supabase || !userId) {
+    if (!supabase) {
       window.location.reload()
       return
     }

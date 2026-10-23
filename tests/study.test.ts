@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createSeed } from '../src/lib/seed'
+import { createSeed } from './fixtures/library'
 import {
   deleteSubject,
   deleteTopic,

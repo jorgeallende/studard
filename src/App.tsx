@@ -66,6 +66,7 @@ import { AccountModal } from './components/AccountModal'
 import { CardEditor, SubjectEditor, TopicEditor } from './components/Editors'
 import { StudySession } from './components/StudySession'
 import { BulkCardImporter } from './components/BulkCardImporter'
+import { LoginPage } from './components/LoginPage'
 
 type Page = 'home' | 'library' | 'favorites' | 'activity'
 type Dialog =
@@ -82,6 +83,13 @@ type Dialog =
 
 export default function App() {
   const { user, loading, error } = useAuth()
+  const {
+    needRefresh: [needRefresh],
+    updateServiceWorker,
+  } = useRegisterSW()
+  const onUpdate = () => {
+    void updateServiceWorker(true)
+  }
   if (loading)
     return (
       <div className="app-loading">
@@ -95,12 +103,31 @@ export default function App() {
         <p>Preparando seu espaço de estudo…</p>
       </div>
     )
-  return <Workspace key={user?.id || 'guest'} user={user} authError={error} />
+  if (!user) return <LoginPage error={error} needRefresh={needRefresh} onUpdate={onUpdate} />
+  return (
+    <Workspace
+      key={user.id}
+      user={user}
+      authError={error}
+      needRefresh={needRefresh}
+      onUpdate={onUpdate}
+    />
+  )
 }
 
-function Workspace({ user, authError }: { user: User | null; authError: string }) {
+function Workspace({
+  user,
+  authError,
+  needRefresh,
+  onUpdate,
+}: {
+  user: User
+  authError: string
+  needRefresh: boolean
+  onUpdate: () => void
+}) {
   const { data, update, ready, online, status, message, storageError, retry, reloadCloud } =
-    useLibrary(user?.id)
+    useLibrary(user.id)
   const [page, setPage] = useState<Page>('home')
   const [selectedSubject, setSelectedSubject] = useState<string | null>(null)
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null)
@@ -113,10 +140,6 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
   const searchRef = useRef<HTMLInputElement>(null)
   const importRef = useRef<HTMLInputElement>(null)
   const install = useInstall()
-  const {
-    needRefresh: [needRefresh],
-    updateServiceWorker,
-  } = useRegisterSW()
   const subject = data.subjects.find((s) => s.id === selectedSubject)
   const topics = data.topics.filter((t) => t.subjectId === selectedSubject)
   const currentTopic = topics.find((topic) => topic.id === selectedTopic)
@@ -382,7 +405,6 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
     )
   })
   const cloudLabels = {
-    local: 'Salvo neste dispositivo',
     loading: 'Carregando biblioteca',
     synced: 'Tudo sincronizado',
     saving: 'Sincronizando…',
@@ -613,7 +635,7 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
             <div className="notice">
               <Sparkles size={17} />
               <span>Uma nova versão do Studard está pronta.</span>
-              <button onClick={() => void updateServiceWorker(true)}>Atualizar app</button>
+              <button onClick={onUpdate}>Atualizar app</button>
             </div>
           )}
           {!ready ? (
@@ -1236,9 +1258,7 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
           onClose={() => setDialog(null)}
         />
       )}
-      {dialog?.kind === 'account' && (
-        <AccountModal user={user} onClose={() => setDialog(null)} notify={setToast} />
-      )}
+      {dialog?.kind === 'account' && <AccountModal user={user} onClose={() => setDialog(null)} />}
       {dialog?.kind === 'settings' && (
         <Modal
           title="Do seu jeito"

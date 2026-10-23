@@ -1,95 +1,12 @@
 import { test, expect } from '@playwright/test'
 import type { Page } from '@playwright/test'
 import type { Library } from '../src/lib/types'
-import { createSeed } from '../src/lib/seed'
+import { createSeed } from '../tests/fixtures/library'
 
-// Intercept every Auth request: these tests never create accounts or send real e-mails.
-async function mockAuth(
-  page: Page,
-  options: { invalidPassword?: boolean; confirmationRequired?: boolean; library?: Library } = {},
-) {
-  const calls: { path: string; method: string; body: Record<string, unknown> | null }[] = []
-  const user = {
-    id: '00000000-0000-4000-8000-000000000010',
-    aud: 'authenticated',
-    role: 'authenticated',
-    email: 'estudante@example.com',
-    email_confirmed_at: new Date().toISOString(),
-    app_metadata: { provider: 'email', providers: ['email'] },
-    user_metadata: {},
-    identities: [],
-    created_at: new Date().toISOString(),
-  }
-  const now = Math.floor(Date.now() / 1000)
-  const token = [
-    Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url'),
-    Buffer.from(
-      JSON.stringify({
-        sub: user.id,
-        aud: 'authenticated',
-        role: 'authenticated',
-        exp: now + 3600,
-        iat: now,
-      }),
-    ).toString('base64url'),
-    'test-signature',
-  ].join('.')
-  const session = {
-    access_token: token,
-    refresh_token: 'test-refresh-token',
-    token_type: 'bearer',
-    expires_in: 3600,
-    expires_at: now + 3600,
-    user,
-  }
-  const headers = { 'access-control-allow-origin': '*', 'content-type': 'application/json' }
-
-  await page.route('**/auth/v1/**', async (route) => {
-    const request = route.request()
-    const url = new URL(request.url())
-    calls.push({
-      path: url.pathname,
-      method: request.method(),
-      body: request.postData() ? request.postDataJSON() : null,
-    })
-    if (request.method() === 'OPTIONS') {
-      await route.fulfill({ status: 204, headers })
-      return
-    }
-    if (url.pathname.endsWith('/token')) {
-      if (options.invalidPassword)
-        await route.fulfill({
-          status: 400,
-          headers,
-          json: {
-            code: 'invalid_credentials',
-            error_code: 'invalid_credentials',
-            msg: 'Invalid login credentials',
-          },
-        })
-      else await route.fulfill({ headers, json: session })
-    } else if (url.pathname.endsWith('/signup')) {
-      await route.fulfill({ headers, json: options.confirmationRequired ? user : session })
-    } else if (url.pathname.endsWith('/user')) {
-      await route.fulfill({ headers, json: user })
-    } else if (url.pathname.endsWith('/logout')) {
-      await route.fulfill({ status: 204, headers })
-    } else {
-      await route.abort()
-    }
-  })
-  await page.route('**/rest/v1/**', (route) =>
-    route.fulfill({
-      headers,
-      json: options.library ? [{ content: options.library, revision: 1 }] : [],
-    }),
-  )
-  return calls
-}
+import { mockAuth } from './helpers/mockAuth'
 
 async function openAccount(page: Page) {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Minha conta', exact: true }).click()
   await expect(page.getByRole('textbox', { name: 'Seu e-mail' })).toBeVisible()
 }
 
@@ -115,7 +32,10 @@ test('signs in with a password, preserves the session across reload, and signs o
   await page.getByRole('button', { name: 'Minha conta', exact: true }).click()
   await expect(page.getByText('Conta conectada', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Sair desta conta' }).click()
-  await expect(page.getByRole('button', { name: 'Salvo neste dispositivo' })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Entrar na minha conta', exact: true }),
+  ).toBeVisible()
+  await expect(page.locator('.sidebar')).toHaveCount(0)
 })
 
 test('opens study with the first click during a background library refresh', async ({ page }) => {
@@ -221,7 +141,8 @@ test('does not report a successful signup when Supabase still requires confirmat
   await expect(page.getByRole('alert')).toContainText(
     'Desative a confirmação de e-mail no Supabase',
   )
-  await expect(page.getByRole('button', { name: 'Salvo neste dispositivo' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Criar minha conta', exact: true })).toBeEnabled()
+  await expect(page.locator('.sidebar')).toHaveCount(0)
 })
 
 test('keeps edits saved while an older background library response is in flight', async ({
@@ -395,4 +316,120 @@ test('syncs the topic exclusion without changing its cards and restores it from 
   await expect(page.getByText('Tema fora das sessões', { exact: true })).toBeVisible()
   await page.locator('.card-question').click()
   await expect(page.getByRole('dialog', { name: 'Consultar flashcard' })).toBeVisible()
+})
+
+async function enter(page: Page, email = 'estudante@example.com') {
+  await page.getByLabel('Seu e-mail').fill(email)
+  await page.getByLabel('Senha', { exact: true }).fill('senha-de-estudo')
+  await page.getByRole('button', { name: 'Entrar na minha conta', exact: true }).click()
+  await expect(page.getByRole('heading', { name: /Seu próximo passo/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Tudo sincronizado' })).toBeVisible()
+}
+
+test('requires login and ignores the old guest library before and after account creation', async ({
+  page,
+}) => {
+  await mockAuth(page)
+  await page.addInitScript((library) => {
+    localStorage.setItem(
+      'studard:library:guest:v1',
+      JSON.stringify({ data: library, revision: 0, dirty: true }),
+    )
+  }, createSeed())
+  const reads: string[] = []
+  page.on('request', (request) => {
+    if (request.url().includes('/rest/v1/')) reads.push(request.url())
+  })
+  await page.goto('/')
+  await expect(page.getByRole('textbox', { name: 'Seu e-mail' })).toBeVisible()
+  await expect(page.locator('.sidebar')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Vamos estudar', exact: true })).toHaveCount(0)
+  await expect(page.getByText('Português', { exact: true })).toHaveCount(0)
+  expect(reads).toHaveLength(0)
+  await page.getByRole('button', { name: 'Criar conta', exact: true }).click()
+  await page.getByLabel('Seu e-mail').fill('estudante@example.com')
+  await page.getByLabel('Senha', { exact: true }).fill('senha-de-estudo')
+  await page.getByLabel('Confirmar senha').fill('senha-de-estudo')
+  await page.getByRole('button', { name: 'Criar minha conta', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Tudo sincronizado' })).toBeVisible()
+  await expect(page.locator('.stat-card').first().locator('strong')).toHaveText('0')
+  await expect(page.locator('.subjects-nav > button')).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole('heading', { name: /Seu próximo passo/ })).toBeVisible()
+  await expect(page.locator('.stat-card').first().locator('strong')).toHaveText('0')
+})
+
+test('returns to login after signout even with cached cards and browser history', async ({
+  page,
+}) => {
+  await mockAuth(page, { library: createSeed() })
+  await page.goto('/')
+  await enter(page)
+  await page.getByRole('button', { name: 'Minha conta', exact: true }).click()
+  await page.getByRole('button', { name: 'Sair desta conta', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Seu e-mail' })).toBeVisible()
+  await expect(page.locator('.sidebar')).toHaveCount(0)
+  await page.reload()
+  await expect(page.getByRole('textbox', { name: 'Seu e-mail' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /Seu próximo passo/ })).toHaveCount(0)
+  await page.goto('/?from=history')
+  await page.goBack()
+  await expect(page.getByRole('textbox', { name: 'Seu e-mail' })).toBeVisible()
+  await expect(page.locator('.subject-tile')).toHaveCount(0)
+})
+
+test('does not show the previous account library when another user signs in on the same device', async ({
+  page,
+}) => {
+  await mockAuth(page, { library: createSeed() })
+  await page.goto('/')
+  await enter(page)
+  await expect(page.locator('.stat-card').first().locator('strong')).toHaveText('23')
+  await page.getByRole('button', { name: 'Minha conta', exact: true }).click()
+  await page.getByRole('button', { name: 'Sair desta conta', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Seu e-mail' })).toBeVisible()
+  await mockAuth(page, {
+    user: { id: '00000000-0000-4000-8000-000000000020', email: 'outra-conta@example.com' },
+  })
+  await enter(page, 'outra-conta@example.com')
+  await expect(page.locator('.stat-card').first().locator('strong')).toHaveText('0')
+  await expect(page.locator('.subjects-nav > button')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Minha conta', exact: true }).click()
+  await expect(page.getByText('outra-conta@example.com', { exact: true })).toBeVisible()
+})
+
+test('locks the workspace when an expired session cannot be refreshed', async ({ page }) => {
+  await page.clock.install({ time: new Date() })
+  await mockAuth(page, { library: createSeed() })
+  await page.route('**/auth/v1/token*', (route) => {
+    if (new URL(route.request().url()).searchParams.get('grant_type') === 'refresh_token') {
+      return route.fulfill({
+        status: 400,
+        headers: { 'access-control-allow-origin': '*' },
+        json: { error_code: 'refresh_token_not_found', msg: 'Invalid refresh token' },
+      })
+    }
+    return route.fallback()
+  })
+  await page.goto('/')
+  await enter(page)
+  await page.clock.fastForward(2 * 60 * 60 * 1000)
+  await page.reload()
+  await expect(page.getByRole('textbox', { name: 'Seu e-mail' })).toBeVisible()
+  await expect(page.locator('.sidebar')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: /Seu próximo passo/ })).toHaveCount(0)
+})
+
+test('signing out also locks the workspace in another open tab', async ({ page, context }) => {
+  await mockAuth(context, { library: createSeed() })
+  await page.goto('/')
+  await enter(page)
+  const second = await context.newPage()
+  await second.goto('/')
+  await expect(second.getByRole('heading', { name: /Seu próximo passo/ })).toBeVisible()
+  await page.getByRole('button', { name: 'Minha conta', exact: true }).click()
+  await page.getByRole('button', { name: 'Sair desta conta', exact: true }).click()
+  await expect(second.getByRole('textbox', { name: 'Seu e-mail' })).toBeVisible()
+  await expect(second.locator('.sidebar')).toHaveCount(0)
+  await second.close()
 })
