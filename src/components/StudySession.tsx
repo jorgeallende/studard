@@ -11,7 +11,7 @@ import {
   X,
 } from 'lucide-react'
 import type { Card, Library, Rating } from '../lib/types'
-import { REVIEW_INTERVALS, isStudyActive, shuffleCards } from '../lib/study'
+import { REVIEW_INTERVALS, getStudyCards, shuffleCards } from '../lib/study'
 
 export function StudySession({
   cards: initialCards,
@@ -42,7 +42,7 @@ export function StudySession({
   const card = cards[index]
   const topic = library.topics.find((t) => t.id === card?.topicId)
   const subject = library.subjects.find((s) => s.id === topic?.subjectId)
-  const activeIds = new Set(library.cards.filter(isStudyActive).map((card) => card.id))
+  const activeIds = new Set(getStudyCards(library.cards, library.topics).map((card) => card.id))
   const restartCards = cards.filter(
     (card) => activeIds.has(card.id) && !suspended.includes(card.id),
   )

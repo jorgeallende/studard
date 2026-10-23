@@ -25,7 +25,14 @@ export function isLibrary(input: unknown): input is Library {
   const subjects = new Set(data.subjects.map((s) => s.id))
   if (subjects.size !== data.subjects.length) return false
   if (
-    !data.topics.every((t) => t && text(t.id, 100) && text(t.name, 80) && subjects.has(t.subjectId))
+    !data.topics.every(
+      (t) =>
+        t &&
+        text(t.id, 100) &&
+        text(t.name, 80) &&
+        subjects.has(t.subjectId) &&
+        (t.suspended === undefined || typeof t.suspended === 'boolean'),
+    )
   )
     return false
   const topics = new Set(data.topics.map((t) => t.id))

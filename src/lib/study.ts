@@ -1,4 +1,4 @@
-import type { Card, Library, Rating } from './types'
+import type { Card, Library, Rating, Topic } from './types'
 
 export const REVIEW_INTERVALS = {
   again: { days: 1, label: 'Amanhã' },
@@ -17,6 +17,18 @@ export function shuffleCards(cards: readonly Card[]): Card[] {
 
 export function isStudyActive(card: Card) {
   return card.suspended !== true
+}
+export function getStudyCards(cards: readonly Card[], topics: readonly Topic[]): Card[] {
+  const suspendedTopics = new Set(
+    topics.filter((topic) => topic.suspended).map((topic) => topic.id),
+  )
+  return cards.filter((card) => isStudyActive(card) && !suspendedTopics.has(card.topicId))
+}
+export function setTopicSuspended(library: Library, id: string, suspended: boolean): Library {
+  return {
+    ...library,
+    topics: library.topics.map((topic) => (topic.id === id ? { ...topic, suspended } : topic)),
+  }
 }
 export function isDue(card: Card, now = new Date()) {
   return isStudyActive(card) && new Date(card.dueAt).getTime() <= now.getTime()

@@ -4125,3 +4125,42 @@ select {
   padding-bottom: 10px;
   box-shadow: 0 -10px 16px #fdfef9;
 }
+.topic-actions {
+  flex-wrap: wrap;
+  align-items: center;
+}
+.topic-actions .topic-session-toggle {
+  font-size: 10px;
+  padding: 5px 8px;
+  border: 1px solid #d8e2ce;
+  border-radius: 6px;
+  background: #f3f7ed;
+  color: #667c55;
+}
+.topic-actions .topic-session-toggle:hover {
+  border-color: #b7cca8;
+  background: #eaf1e1;
+}
+.topic-suspended-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 15px;
+  margin-bottom: 20px;
+  border: 1px solid #dfe6d5;
+  border-radius: 10px;
+  background: #f1f5eb;
+  color: #829375;
+}
+.topic-suspended-notice > svg {
+  margin-top: 2px;
+}
+.topic-suspended-notice p {
+  font-size: 11px;
+  line-height: 1.8;
+}
+.topic-suspended-notice strong {
+  display: block;
+  color: #61784f;
+  font-weight: 500;
+}

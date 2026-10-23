@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { Card } from './types'
-import { isStudyActive } from './study'
+import type { Card, Topic } from './types'
+import { getStudyCards } from './study'
 
 // Refresh at the next deadline, at midnight, and when returning to the app.
-export function useReviewClock(cards: readonly Card[]) {
+export function useReviewClock(cards: readonly Card[], topics: readonly Topic[]) {
   const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
@@ -15,8 +15,7 @@ export function useReviewClock(cards: readonly Card[]) {
       const midnight = new Date(timestamp)
       midnight.setHours(24, 0, 0, 0)
       let next = midnight.getTime()
-      for (const card of cards) {
-        if (!isStudyActive(card)) continue
+      for (const card of getStudyCards(cards, topics)) {
         const deadline = Date.parse(card.dueAt)
         if (deadline > timestamp && deadline < next) next = deadline
       }
@@ -33,7 +32,7 @@ export function useReviewClock(cards: readonly Card[]) {
       window.removeEventListener('focus', refresh)
       document.removeEventListener('visibilitychange', visible)
     }
-  }, [cards])
+  }, [cards, topics])
 
   return new Date(now)
 }

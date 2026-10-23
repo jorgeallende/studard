@@ -75,7 +75,7 @@ Cole o JSON gerado pela IA neste formato:
 
 O app valida todos os itens, mostra a quantidade e uma prévia dos três primeiros cards. Também aceita o JSON com as marcações de um bloco de código `json`. Se houver qualquer item inválido, nenhum card é adicionado; a mensagem identifica o item que precisa ser corrigido. Perguntas aceitam até 2.000 caracteres e respostas até 10.000, como no editor individual.
 
-Ao clicar em **Adicionar**, todos os novos cards são acrescentados ao tema em uma única atualização da biblioteca. Cada item recebe um identificador novo, começa sem avaliações e fica disponível para estudo e revisão imediatamente. Os cards existentes são preservados. A sincronização e o modo offline seguem o mesmo funcionamento dos cards criados individualmente. Não é necessário executar uma migração SQL.
+Ao clicar em **Adicionar**, todos os novos cards são acrescentados ao tema em uma única atualização da biblioteca. Cada item recebe um identificador novo, começa sem avaliações e fica disponível para estudo e revisão imediatamente quando o tema está ativo. Os cards existentes são preservados. A sincronização e o modo offline seguem o mesmo funcionamento dos cards criados individualmente. Não é necessário executar uma migração SQL.
 
 ## Revisões
 
@@ -91,6 +91,8 @@ Os intervalos são simples e fixos: **Preciso rever** agenda para amanhã; **Lem
 Depois de revelar a resposta, a opção discreta **Não mostrar mais nas sessões**, abaixo das três avaliações, retira o card de todos os modos de estudo e revisão, incluindo favoritos e **Estudar novamente**. Ela avança para o próximo card sem registrar uma avaliação ou alterar seu prazo. O card continua aparecendo na listagem e na busca como **Fora das sessões**, onde é possível consultar a pergunta e a resposta ou escolher **Voltar às sessões**. A reativação preserva o prazo anterior; se ele já venceu, o card fica disponível para revisão imediatamente.
 
 Essa preferência fica salva com a biblioteca, sincroniza entre dispositivos e acompanha os backups. Cards antigos continuam ativos por padrão. Não é necessário executar uma nova migração SQL.
+
+Na aba de um tema, **Retirar tema das sessões** exclui todos os seus cards do estudo e da revisão, incluindo a visão geral, **Todos os temas**, favoritos e consultas iniciadas pela busca. A listagem continua disponível para consulta, com a indicação **Tema fora das sessões**. Cards novos adicionados individualmente ou em bloco também ficam fora enquanto o tema estiver desativado. Use **Reativar tema nas sessões** para voltar a incluir o tema; cards retirados individualmente continuam fora. Essa preferência é do tema, preserva o conteúdo, os prazos e o histórico dos cards, e acompanha a sincronização e os backups. Renomear o tema mantém sua preferência. Não é necessário executar outra migração SQL.
 
 O objetivo visual é de 20 revisões por dia. Os números de constância, atividade e lembrança são calculados com base nas suas avaliações reais, usando o calendário local do dispositivo.
 

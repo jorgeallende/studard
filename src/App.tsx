@@ -48,11 +48,12 @@ import { useReviewClock } from './lib/useReviewClock'
 import {
   deleteSubject,
   deleteTopic,
+  getStudyCards,
   isDue,
-  isStudyActive,
   localDay,
   reviewCard,
   setCardSuspended,
+  setTopicSuspended,
   streak,
 } from './lib/study'
 import { isLibrary } from './lib/validation'
@@ -118,9 +119,15 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
   } = useRegisterSW()
   const subject = data.subjects.find((s) => s.id === selectedSubject)
   const topics = data.topics.filter((t) => t.subjectId === selectedSubject)
-  const now = useReviewClock(data.cards)
-  const activeCards = data.cards.filter(isStudyActive)
-  const due = data.cards.filter((c) => isDue(c, now))
+  const currentTopic = topics.find((topic) => topic.id === selectedTopic)
+  const previewTopic =
+    dialog?.kind === 'preview'
+      ? data.topics.find((topic) => topic.id === dialog.card.topicId)
+      : undefined
+  const now = useReviewClock(data.cards, data.topics)
+  const activeCards = getStudyCards(data.cards, data.topics)
+  const activeIds = new Set(activeCards.map((card) => card.id))
+  const due = activeCards.filter((c) => isDue(c, now))
   const todayReviews = data.history.filter((r) => localDay(new Date(r.at)) === localDay(new Date()))
   const currentStreak = streak(data)
   const todayCount = todayReviews.length
@@ -165,7 +172,7 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
     window.scrollTo({ top: 0, behavior: 'instant' })
   }
   function startStudy(cards: Card[], title: string) {
-    const available = cards.filter(isStudyActive)
+    const available = getStudyCards(cards, data.topics)
     if (!available.length) {
       setToast(
         'Nenhum card ativo para estudar neste contexto. Você pode criar ou reativar um card.',
@@ -175,16 +182,31 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
     setSession({ cards: available, title })
   }
   function openCard(card: Card) {
-    if (!isStudyActive(card)) setDialog({ kind: 'preview', card })
+    if (!activeIds.has(card.id)) setDialog({ kind: 'preview', card })
     else startStudy([card], 'Uma descoberta rápida')
   }
   function restoreCard(card: Card) {
+    if (data.topics.find((topic) => topic.id === card.topicId)?.suspended) {
+      setToast('Reative o tema para voltar a usar os cards nas sessões.')
+      return
+    }
     update((library) => setCardSuspended(library, card.id, false))
     setDialog(null)
     setToast('O card voltou às sessões de estudo e revisão.')
   }
+  function toggleTopicSessions(topic: Topic) {
+    const suspended = !topic.suspended
+    update((library) => setTopicSuspended(library, topic.id, suspended))
+    setOnlyDue(false)
+    setDialog(null)
+    setToast(
+      suspended
+        ? 'O tema ficou fora das sessões de estudo e revisão.'
+        : 'O tema voltou às sessões. Cards retirados individualmente continuam fora.',
+    )
+  }
   function startReview(cards: Card[], title: string) {
-    const available = cards.filter((card) => isDue(card))
+    const available = getStudyCards(cards, data.topics).filter((card) => isDue(card))
     if (!available.length) {
       setToast('Tudo em dia! Nenhum card precisa de revisão neste contexto.')
       return
@@ -346,13 +368,13 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
       (page !== 'favorites' || c.favorite)
     )
   })
-  const scopedDue = scopedCards.filter((card) => isDue(card, now))
-  const scopedStudyCards = scopedCards.filter(isStudyActive)
+  const scopedStudyCards = getStudyCards(scopedCards, data.topics)
+  const scopedDue = scopedStudyCards.filter((card) => isDue(card, now))
   const matchingCards = scopedCards.filter((c) => {
     const topic = data.topics.find((t) => t.id === c.topicId)
     const cardSubject = data.subjects.find((s) => s.id === topic?.subjectId)
     return (
-      (!onlyDue || isDue(c, now)) &&
+      (!onlyDue || (activeIds.has(c.id) && isDue(c, now))) &&
       (!q ||
         `${c.question} ${c.answer} ${topic?.name} ${cardSubject?.name}`
           .toLocaleLowerCase('pt-BR')
@@ -963,6 +985,7 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
                         onClick={() => setSelectedTopic(t.id)}
                       >
                         {t.name}
+                        {t.suspended && <EyeOff size={12} aria-hidden="true" />}
                         <span>{data.cards.filter((c) => c.topicId === t.id).length}</span>
                       </button>
                     ))}
@@ -1006,6 +1029,21 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
                             <Trash2 size={12} />
                             Excluir tema
                           </button>
+                          {currentTopic && (
+                            <button
+                              className="text-button topic-session-toggle"
+                              onClick={() => toggleTopicSessions(currentTopic)}
+                            >
+                              {currentTopic.suspended ? (
+                                <RotateCcw size={13} />
+                              ) : (
+                                <EyeOff size={13} />
+                              )}
+                              {currentTopic.suspended
+                                ? 'Reativar tema nas sessões'
+                                : 'Retirar tema das sessões'}
+                            </button>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1054,6 +1092,16 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
                       </div>
                     </div>
                   </div>
+                  {currentTopic?.suspended && (
+                    <div className="topic-suspended-notice" role="status">
+                      <EyeOff size={18} />
+                      <p>
+                        <strong>Tema fora das sessões.</strong> Seus cards continuam disponíveis
+                        para consulta. Novos cards deste tema também ficam fora do estudo e da
+                        revisão.
+                      </p>
+                    </div>
+                  )}
                   <CardGrid
                     cards={matchingCards}
                     data={data}
@@ -1090,7 +1138,7 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
                     action={
                       <button
                         className="btn btn-primary"
-                        disabled={!matchingCards.some(isStudyActive)}
+                        disabled={!matchingCards.some((card) => activeIds.has(card.id))}
                         onClick={() => startStudy(matchingCards, 'Seus favoritos')}
                       >
                         <Play size={16} />
@@ -1330,7 +1378,11 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
       {dialog?.kind === 'preview' && (
         <Modal
           title="Consultar flashcard"
-          description="Este card está fora das sessões, mas continua guardado na sua biblioteca."
+          description={
+            previewTopic?.suspended
+              ? 'Este tema está fora das sessões. Seus cards continuam guardados na biblioteca para consulta.'
+              : 'Este card está fora das sessões, mas continua guardado na sua biblioteca.'
+          }
           onClose={() => setDialog(null)}
         >
           <div className="card-preview-content">
@@ -1338,9 +1390,16 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
             <h3>{dialog.card.question}</h3>
             <span className="eyebrow">RESPOSTA</span>
             <p>{dialog.card.answer}</p>
-            <button className="btn btn-secondary" onClick={() => restoreCard(dialog.card)}>
+            <button
+              className="btn btn-secondary"
+              onClick={() =>
+                previewTopic?.suspended
+                  ? toggleTopicSessions(previewTopic)
+                  : restoreCard(dialog.card)
+              }
+            >
               <RotateCcw size={16} />
-              Voltar às sessões
+              {previewTopic?.suspended ? 'Reativar tema nas sessões' : 'Voltar às sessões'}
             </button>
           </div>
         </Modal>
@@ -1428,7 +1487,7 @@ function SubjectTile({
 }) {
   const topics = data.topics.filter((t) => t.subjectId === subject.id)
   const cards = data.cards.filter((c) => topics.some((t) => t.id === c.topicId))
-  const due = cards.filter((c) => isDue(c)).length
+  const due = getStudyCards(cards, data.topics).filter((c) => isDue(c)).length
   return (
     <article className={`subject-tile subject-${subject.color}`}>
       <button className="subject-tile-main" onClick={onClick}>
@@ -1511,6 +1570,7 @@ function CardGrid({
       {cards.map((card) => {
         const topic = data.topics.find((t) => t.id === card.topicId)
         const subject = data.subjects.find((s) => s.id === topic?.subjectId)
+        const suspended = card.suspended || topic?.suspended
         return (
           <article className="flashcard-tile" key={card.id}>
             <div className="flashcard-tile-top">
@@ -1530,21 +1590,27 @@ function CardGrid({
               <small>PERGUNTA</small>
               <h3>{card.question}</h3>
               <span>
-                {card.suspended ? <EyeOff size={14} /> : <RotateCcw size={14} />}
-                {card.suspended ? 'Consultar pergunta e resposta' : 'Vire para descobrir'}
+                {suspended ? <EyeOff size={14} /> : <RotateCcw size={14} />}
+                {suspended ? 'Consultar pergunta e resposta' : 'Vire para descobrir'}
               </span>
             </button>
             <div className="flashcard-tile-bottom">
               <span
                 className={
-                  card.suspended ? 'card-suspended' : isDue(card) ? 'card-due' : 'card-reviewed'
+                  suspended ? 'card-suspended' : isDue(card) ? 'card-due' : 'card-reviewed'
                 }
               >
                 <span />
-                {card.suspended ? 'Fora das sessões' : isDue(card) ? 'Para revisar' : 'Em dia'}
+                {topic?.suspended
+                  ? 'Tema fora das sessões'
+                  : card.suspended
+                    ? 'Fora das sessões'
+                    : isDue(card)
+                      ? 'Para revisar'
+                      : 'Em dia'}
               </span>
               <span className="card-tile-actions">
-                {card.suspended && (
+                {card.suspended && !topic?.suspended && (
                   <button
                     className="icon-btn"
                     aria-label="Voltar às sessões"

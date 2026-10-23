@@ -304,3 +304,108 @@ test('can suspend the only card, edit it without reactivating it, and restore it
   expect(saved.cards[0].reviews).toBe(1)
   expect(saved.history).toHaveLength(0)
 })
+
+async function goTo(page: Page, name: string) {
+  const menu = page.getByRole('button', { name: 'Abrir menu' })
+  if (await menu.isVisible()) await menu.click()
+  await page
+    .locator('.main-nav')
+    .getByRole('button', { name: new RegExp(name) })
+    .click()
+}
+
+test('takes a whole topic out of every session while keeping its cards available for consultation', async ({
+  page,
+}) => {
+  const data = fixture()
+  data.cards = data.cards.map((card) =>
+    card.topicId === 'ta' ? { ...card, favorite: true } : card,
+  )
+  await loadLibrary(page, data)
+  await page.getByRole('button', { name: /Português.*2 temas/ }).click()
+  await page.getByRole('button', { name: 'Concordância 2', exact: true }).click()
+  await page.getByRole('checkbox', { name: 'Só para revisar' }).check()
+  await page.getByRole('button', { name: 'Retirar tema das sessões', exact: true }).click()
+  await expect(page.getByRole('checkbox', { name: 'Só para revisar' })).not.toBeChecked()
+  await expect(page.getByRole('button', { name: 'Estudar 0', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Revisar 0', exact: true })).toBeDisabled()
+  await expect(page.locator('.flashcard-tile')).toHaveCount(2)
+  await expect(page.locator('.card-suspended')).toHaveText([
+    'Tema fora das sessões',
+    'Tema fora das sessões',
+  ])
+  await page.getByRole('button', { name: /Todos os temas/ }).click()
+  await expect(page.getByRole('button', { name: 'Estudar 2', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Revisar 1', exact: true })).toBeEnabled()
+  await goTo(page, 'Visão geral')
+  await page.getByRole('button', { name: 'Vamos estudar', exact: true }).click()
+  await expect(page.locator('.study-progress-head strong')).toHaveText(/1\s+de\s*4/)
+  await page.getByRole('button', { name: 'Encerrar sessão' }).click()
+  await page.getByRole('button', { name: 'Revisar 2', exact: true }).click()
+  expect(await completeSession(page, 2)).toEqual(['Crase pendente', 'História pendente'].toSorted())
+  await page.getByRole('button', { name: 'Concluir sessão' }).click()
+  await goTo(page, 'Favoritos')
+  await expect(page.locator('.flashcard-tile')).toHaveCount(2)
+  await expect(page.getByRole('button', { name: 'Estudar favoritos', exact: true })).toBeDisabled()
+  await page.locator('.card-question').first().click()
+  const preview = page.getByRole('dialog', { name: 'Consultar flashcard' })
+  await expect(
+    preview.getByText('Este tema está fora das sessões.', { exact: false }),
+  ).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Sessão de estudo' })).toHaveCount(0)
+  await preview.getByRole('button', { name: 'Fechar janela' }).click()
+  const saved = await exportLibrary(page)
+  expect(saved.topics.find((topic) => topic.id === 'ta')?.suspended).toBe(true)
+  expect(saved.cards.filter((card) => card.topicId === 'ta')).toEqual(
+    data.cards.filter((card) => card.topicId === 'ta'),
+  )
+  await page.getByRole('dialog').getByRole('button', { name: 'Fechar janela' }).click()
+  await page.locator('.card-question').first().click()
+  await page
+    .getByRole('dialog', { name: 'Consultar flashcard' })
+    .getByRole('button', { name: 'Reativar tema nas sessões', exact: true })
+    .click()
+  await expect(page.getByRole('button', { name: 'Estudar favoritos', exact: true })).toBeEnabled()
+})
+
+test('keeps newly imported cards out of a suspended topic and preserves individual choices when restoring', async ({
+  page,
+}) => {
+  const data = fixture()
+  data.cards[0].suspended = true
+  await loadLibrary(page, data)
+  await page.getByRole('button', { name: /Português.*2 temas/ }).click()
+  await page.getByRole('button', { name: 'Concordância 2', exact: true }).click()
+  await page.getByRole('button', { name: 'Retirar tema das sessões', exact: true }).click()
+  await page.getByRole('button', { name: 'Inserir em bloco', exact: true }).click()
+  await page
+    .getByLabel('JSON dos flashcards')
+    .fill('[{"pergunta":"Novo do tema retirado","resposta":"Deve ficar apenas na listagem"}]')
+  await page.getByRole('button', { name: 'Adicionar 1 card', exact: true }).click()
+  await expect(page.locator('.flashcard-tile')).toHaveCount(3)
+  await expect(page.getByRole('button', { name: 'Estudar 0', exact: true })).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Revisar 0', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Editar tema', exact: true }).click()
+  await page.getByLabel('Nome do tema').fill('Concordância revisada')
+  await page.getByRole('button', { name: 'Salvar alterações', exact: true }).click()
+  await expect(
+    page.getByRole('button', { name: 'Reativar tema nas sessões', exact: true }),
+  ).toBeVisible()
+  await page.reload()
+  await page.getByRole('button', { name: /Português.*2 temas/ }).click()
+  await page.getByRole('button', { name: 'Concordância revisada 3', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Estudar 0', exact: true })).toBeDisabled()
+  await page.getByRole('button', { name: 'Reativar tema nas sessões', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Estudar 2', exact: true })).toBeEnabled()
+  await expect(page.getByRole('button', { name: 'Revisar 1', exact: true })).toBeEnabled()
+  await expect(page.locator('.card-suspended')).toHaveText(['Fora das sessões'])
+  const saved = await exportLibrary(page)
+  expect(saved.topics.find((topic) => topic.id === 'ta')).toMatchObject({
+    name: 'Concordância revisada',
+    suspended: false,
+  })
+  expect(saved.cards.find((card) => card.id === 'a1')?.suspended).toBe(true)
+  expect(saved.cards.find((card) => card.id === 'a2')).toEqual(data.cards[1])
+  expect(saved.cards.find((card) => card.question === 'Novo do tema retirado')?.reviews).toBe(0)
+  expect(saved.history).toHaveLength(0)
+})

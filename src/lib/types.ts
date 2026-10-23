@@ -9,6 +9,7 @@ export interface Topic {
   id: string
   subjectId: string
   name: string
+  suspended?: boolean
 }
 export interface Card {
   id: string

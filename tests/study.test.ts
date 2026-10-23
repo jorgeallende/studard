@@ -3,11 +3,13 @@ import { createSeed } from '../src/lib/seed'
 import {
   deleteSubject,
   deleteTopic,
+  getStudyCards,
   isDue,
   isStudyActive,
   reviewCard,
   scheduleCard,
   setCardSuspended,
+  setTopicSuspended,
   streak,
 } from '../src/lib/study'
 import { isLibrary } from '../src/lib/validation'
@@ -48,6 +50,49 @@ describe('Sessões e calendário de revisão', () => {
   })
 })
 describe('Integridade da biblioteca', () => {
+  it('retira um tema inteiro sem mudar os cards nem os demais temas', () => {
+    const before = createSeed()
+    const after = setTopicSuspended(before, 't1', true)
+    expect(after.cards).toBe(before.cards)
+    expect(after.history).toBe(before.history)
+    expect(after.topics.find((topic) => topic.id === 't1')?.suspended).toBe(true)
+    expect(getStudyCards(after.cards, after.topics).some((card) => card.topicId === 't1')).toBe(
+      false,
+    )
+    expect(getStudyCards(after.cards, after.topics)).toEqual(
+      before.cards.filter((card) => card.topicId !== 't1'),
+    )
+    expect(before.topics.find((topic) => topic.id === 't1')?.suspended).toBeUndefined()
+  })
+  it('inclui cards novos na preferência do tema e preserva as exclusões individuais ao reativar', () => {
+    const before = createSeed()
+    const individualId = before.cards.find((card) => card.topicId === 't1')!.id
+    const hidden = setTopicSuspended(setCardSuspended(before, individualId, true), 't1', true)
+    hidden.cards = [...hidden.cards, { ...before.cards[0], id: 'novo-card-do-tema' }]
+    expect(getStudyCards(hidden.cards, hidden.topics).some((card) => card.topicId === 't1')).toBe(
+      false,
+    )
+    const restored = setTopicSuspended(hidden, 't1', false)
+    const ids = getStudyCards(restored.cards, restored.topics).map((card) => card.id)
+    expect(ids).toContain('novo-card-do-tema')
+    expect(ids).not.toContain(individualId)
+    expect(restored.cards).toBe(hidden.cards)
+    expect(isLibrary(restored)).toBe(true)
+  })
+  it('valida a preferência do tema mantendo compatibilidade com bibliotecas antigas', () => {
+    const before = createSeed()
+    expect(isLibrary(before)).toBe(true)
+    expect(isLibrary(setTopicSuspended(before, 't1', true))).toBe(true)
+    expect(isLibrary(setTopicSuspended(before, 't1', false))).toBe(true)
+    for (const invalid of [null, 'true', 1]) {
+      expect(
+        isLibrary({
+          ...before,
+          topics: before.topics.map((topic) => ({ ...topic, suspended: invalid })),
+        }),
+      ).toBe(false)
+    }
+  })
   it('retira um card das sessões sem mudar seu conteúdo, prazo ou histórico', () => {
     const before = createSeed()
     before.cards[0].dueAt = now.toISOString()

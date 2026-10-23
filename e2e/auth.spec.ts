@@ -356,3 +356,43 @@ test('syncs a JSON batch as one library update with every new card in the intend
   await page.getByRole('textbox', { name: 'Buscar na biblioteca' }).fill('Questão importada')
   await expect(page.locator('.flashcard-tile')).toHaveCount(2)
 })
+
+test('syncs the topic exclusion without changing its cards and restores it from the cloud', async ({
+  page,
+}) => {
+  const library = createSeed()
+  const cardsBefore = structuredClone(library.cards)
+  await mockAuth(page, { library })
+  await page.route('**/rest/v1/rpc/save_study_library', async (route) => {
+    const payload = route.request().postDataJSON()
+    Object.assign(library, payload.library_content)
+    await route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: 2 })
+  })
+  await openAccount(page)
+  await page.getByLabel('Seu e-mail').fill('estudante@example.com')
+  await page.getByLabel('Senha', { exact: true }).fill('senha-de-estudo')
+  await page.getByRole('button', { name: 'Entrar na minha conta', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Tudo sincronizado' })).toBeVisible()
+  await page.getByRole('button', { name: /Português.*3 temas/ }).click()
+  await page.getByRole('button', { name: 'Concordância verbal 4', exact: true }).click()
+  const saved = page.waitForResponse((response) =>
+    response.url().includes('/rpc/save_study_library'),
+  )
+  await page.getByRole('button', { name: 'Retirar tema das sessões', exact: true }).click()
+  await saved
+  await expect(page.getByRole('button', { name: 'Tudo sincronizado' })).toBeVisible()
+  expect(library.topics.find((topic) => topic.id === 't1')?.suspended).toBe(true)
+  expect(library.cards).toEqual(cardsBefore)
+  expect(library.history).toHaveLength(0)
+  await page.reload()
+  await expect(page.getByRole('button', { name: 'Revisar 19', exact: true })).toBeEnabled()
+  await page.getByRole('button', { name: 'Vamos estudar', exact: true }).click()
+  await expect(page.locator('.study-progress-head strong')).toHaveText(/1\s+de\s*19/)
+  await page.getByRole('button', { name: 'Encerrar sessão' }).click()
+  await page
+    .getByRole('textbox', { name: 'Buscar na biblioteca' })
+    .fill('O que é concordância verbal?')
+  await expect(page.getByText('Tema fora das sessões', { exact: true })).toBeVisible()
+  await page.locator('.card-question').click()
+  await expect(page.getByRole('dialog', { name: 'Consultar flashcard' })).toBeVisible()
+})

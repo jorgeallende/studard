@@ -120,6 +120,7 @@ export function TopicEditor({
           e.preventDefault()
           if (name.trim())
             onSave({
+              ...topic,
               id: topic?.id || crypto.randomUUID(),
               subjectId: subject.id,
               name: name.trim(),
