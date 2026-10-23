@@ -20,6 +20,7 @@ import {
   Heart,
   LayoutGrid,
   Leaf,
+  ListPlus,
   LoaderCircle,
   LogIn,
   Menu,
@@ -55,18 +56,22 @@ import {
   streak,
 } from './lib/study'
 import { isLibrary } from './lib/validation'
+import { createBulkCards } from './lib/bulkCards'
+import type { BulkCardDraft } from './lib/bulkCards'
 import type { Card, Library, Subject, Topic } from './lib/types'
 import { SubjectIcon } from './components/SubjectIcon'
 import { Modal } from './components/Modal'
 import { AccountModal } from './components/AccountModal'
 import { CardEditor, SubjectEditor, TopicEditor } from './components/Editors'
 import { StudySession } from './components/StudySession'
+import { BulkCardImporter } from './components/BulkCardImporter'
 
 type Page = 'home' | 'library' | 'favorites' | 'activity'
 type Dialog =
   | { kind: 'subject'; subject?: Subject }
   | { kind: 'topic'; subject: Subject; topic?: Topic }
   | { kind: 'card'; card?: Card }
+  | { kind: 'bulk'; subject: Subject; topicId?: string }
   | { kind: 'preview'; card: Card }
   | { kind: 'account' }
   | { kind: 'settings' }
@@ -229,6 +234,30 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
     }))
     setDialog(null)
     setToast(editing ? 'Flashcard atualizado.' : 'Novo flashcard pronto para estudar!')
+  }
+  function saveBulkCards(topicId: string, drafts: BulkCardDraft[]) {
+    if (dialog?.kind !== 'bulk') return false
+    let inserted = false
+    update((library) => {
+      if (
+        !library.topics.some(
+          (topic) => topic.id === topicId && topic.subjectId === dialog.subject.id,
+        )
+      )
+        return library
+      const cards = createBulkCards(drafts, topicId)
+      inserted = true
+      return { ...library, cards: [...library.cards, ...cards] }
+    })
+    if (!inserted) return false
+    setSelectedTopic(topicId)
+    setOnlyDue(false)
+    setQuery('')
+    setDialog(null)
+    setToast(
+      `${drafts.length} ${drafts.length === 1 ? 'flashcard adicionado' : 'flashcards adicionados'} ao tema.`,
+    )
+    return true
   }
   function exportData() {
     const url = URL.createObjectURL(
@@ -875,7 +904,7 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
                       title={subject.name}
                       subtitle={`${topics.length} ${topics.length === 1 ? 'tema' : 'temas'} · ${data.cards.filter((c) => topics.some((t) => t.id === c.topicId)).length} cards para descobrir`}
                       action={
-                        <div className="heading-actions">
+                        <div className="heading-actions subject-actions">
                           <button
                             className="icon-btn border-btn"
                             aria-label="Editar matéria"
@@ -893,6 +922,25 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
                           <button className="btn btn-primary" onClick={newCard}>
                             <Plus size={17} />
                             Novo card
+                          </button>
+                          <button
+                            className="btn btn-secondary"
+                            disabled={!topics.length}
+                            title={
+                              topics.length
+                                ? 'Adicionar vários flashcards a partir de um JSON'
+                                : 'Crie um tema para inserir cards em bloco'
+                            }
+                            onClick={() =>
+                              setDialog({
+                                kind: 'bulk',
+                                subject,
+                                topicId: selectedTopic || undefined,
+                              })
+                            }
+                          >
+                            <ListPlus size={17} />
+                            Inserir em bloco
                           </button>
                         </div>
                       }
@@ -1128,6 +1176,15 @@ function Workspace({ user, authError }: { user: User | null; authError: string }
           initialSubject={selectedSubject || undefined}
           initialTopic={selectedTopic || undefined}
           onSave={saveCard}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'bulk' && (
+        <BulkCardImporter
+          subject={dialog.subject}
+          topics={data.topics.filter((topic) => topic.subjectId === dialog.subject.id)}
+          initialTopicId={dialog.topicId}
+          onInsert={saveBulkCards}
           onClose={() => setDialog(null)}
         />
       )}

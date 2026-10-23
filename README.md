@@ -57,6 +57,26 @@ Não é necessário rodar novamente a migração para trocar o tipo de login. N�
 - Sair da conta preserva seu cache offline neste dispositivo. Use dispositivos pessoais para estudar com dados privados.
 - Backups são validados antes da importação e aceitam arquivos de até 10 MB. A biblioteca na nuvem também tem limite de 10 MB por documento.
 
+## Inserir cards em bloco
+
+Na tela de uma matéria, use **Inserir em bloco**, ao lado de **Novo card**. Se estiver em um tema, ele já vem selecionado. Em **Todos os temas**, escolha o tema de destino antes de adicionar.
+
+Cole o JSON gerado pela IA neste formato:
+
+```json
+[
+  {
+    "pergunta": "O que é concordância verbal?",
+    "resposta": "É a relação de número e pessoa entre o verbo e o sujeito."
+  },
+  { "pergunta": "Há crase antes de verbos?", "resposta": "Não. Exemplo: começou a estudar." }
+]
+```
+
+O app valida todos os itens, mostra a quantidade e uma prévia dos três primeiros cards. Também aceita o JSON com as marcações de um bloco de código `json`. Se houver qualquer item inválido, nenhum card é adicionado; a mensagem identifica o item que precisa ser corrigido. Perguntas aceitam até 2.000 caracteres e respostas até 10.000, como no editor individual.
+
+Ao clicar em **Adicionar**, todos os novos cards são acrescentados ao tema em uma única atualização da biblioteca. Cada item recebe um identificador novo, começa sem avaliações e fica disponível para estudo e revisão imediatamente. Os cards existentes são preservados. A sincronização e o modo offline seguem o mesmo funcionamento dos cards criados individualmente. Não é necessário executar uma migração SQL.
+
 ## Revisões
 
 Os cards são embaralhados automaticamente no início de cada sessão e ao escolher **Estudar novamente**. A ordem permanece estável durante a sessão, sem alterar a organização da biblioteca. O botão **Embaralhar** continua disponível antes de avaliar o primeiro card.

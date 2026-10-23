@@ -311,3 +311,48 @@ test('syncs a suspended card and keeps it out of sessions after reloading from t
   await page.locator('.card-question').click()
   await expect(page.getByRole('dialog', { name: 'Consultar flashcard' })).toBeVisible()
 })
+
+test('syncs a JSON batch as one library update with every new card in the intended topic', async ({
+  page,
+}) => {
+  const library = createSeed()
+  const existingIds = library.cards.map((card) => card.id)
+  const writes: Library[] = []
+  await mockAuth(page, { library })
+  await page.route('**/rest/v1/rpc/save_study_library', async (route) => {
+    const payload = route.request().postDataJSON()
+    writes.push(payload.library_content)
+    Object.assign(library, payload.library_content)
+    await route.fulfill({ headers: { 'access-control-allow-origin': '*' }, json: 2 })
+  })
+  await openAccount(page)
+  await page.getByLabel('Seu e-mail').fill('estudante@example.com')
+  await page.getByLabel('Senha', { exact: true }).fill('senha-de-estudo')
+  await page.getByRole('button', { name: 'Entrar na minha conta', exact: true }).click()
+  await expect(page.getByRole('button', { name: 'Tudo sincronizado' })).toBeVisible()
+  await page.getByRole('button', { name: /Português.*3 temas/ }).click()
+  await page.getByRole('button', { name: 'Crase 3', exact: true }).click()
+  await page.getByRole('button', { name: 'Inserir em bloco', exact: true }).click()
+  await page
+    .getByLabel('JSON dos flashcards')
+    .fill(
+      '[{"pergunta":"Questão importada A","resposta":"Resposta A"},{"pergunta":"Questão importada B","resposta":"Resposta B"}]',
+    )
+  const saved = page.waitForResponse((response) =>
+    response.url().includes('/rpc/save_study_library'),
+  )
+  await page.getByRole('button', { name: 'Adicionar 2 cards', exact: true }).click()
+  await saved
+  await expect(page.getByRole('button', { name: 'Tudo sincronizado' })).toBeVisible()
+  expect(writes).toHaveLength(1)
+  expect(library.cards).toHaveLength(25)
+  expect(library.cards.slice(0, 23).map((card) => card.id)).toEqual(existingIds)
+  expect(library.history).toHaveLength(0)
+  for (const card of library.cards.slice(23)) {
+    expect(card).toMatchObject({ topicId: 't2', favorite: false, reviews: 0 })
+    expect(card.dueAt).toBe(card.createdAt)
+  }
+  await page.reload()
+  await page.getByRole('textbox', { name: 'Buscar na biblioteca' }).fill('Questão importada')
+  await expect(page.locator('.flashcard-tile')).toHaveCount(2)
+})
